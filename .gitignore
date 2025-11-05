@@ -1,0 +1,29 @@
+# PowerShell
+*.ps1xml
+*.pssc
+*.psproj
+*.suo
+*.user
+*.DS_Store
+
+# Build artifacts
+*.nupkg
+publish/
+
+# User-specific files
+.vscode/
+.vs/
+*.suo
+*.user
+*.userprefs
+*.pidb
+*.booproj
+*.svd
+
+# Thumbnails
+._*
+Thumbs.db
+
+# Files that might contain sensitive info
+*.cred
+*.credential
