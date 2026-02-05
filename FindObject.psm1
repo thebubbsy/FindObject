@@ -109,17 +109,10 @@ function Find-ObjectByName {
         }
 
         # Check if the input object has a 'Name' property
-        $nameProperty = $InputObject.PSObject.Properties['Name']
-        if ($null -eq $nameProperty) {
-            Write-Verbose "Input object type '$($InputObject.GetType().FullName)' does not have a 'Name' property. Skipping."
-            return # Skip this object
-        }
-
-        $objectName = $nameProperty.Value
+        $objectName = $InputObject.Name
         if ($null -eq $objectName) {
-            # Handle cases where the Name property exists but its value is null
-            Write-Verbose 'Input object has a null Name property value. Skipping.'
-            return
+            Write-Verbose "Input object type '$($InputObject.GetType().FullName)' does not have a 'Name' property or it is null. Skipping."
+            return # Skip this object
         }
 
         # Ensure it's a string before doing string operations
