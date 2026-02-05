@@ -55,7 +55,7 @@ function Find-ObjectByName {
 
     begin {
         # --- Parse SearchTerms to find keywords and logic ---
-        $keywords = @()
+        $keywords = [System.Collections.Generic.List[string]]::new()
         $logic = 'OR' # Default logic
         $logicSet = $false
 
@@ -73,7 +73,7 @@ function Find-ObjectByName {
             } else {
                 # Add non-operator terms to keywords list
                 if (-not [string]::IsNullOrWhiteSpace($term)) {
-                    $keywords += $term
+                    $keywords.Add($term)
                     Write-Verbose "Keyword added: $term"
                 } else {
                     Write-Verbose 'Skipping empty or whitespace term.'
