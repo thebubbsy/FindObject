@@ -27,3 +27,9 @@ Thumbs.db
 # Files that might contain sensitive info
 *.cred
 *.credential
+
+# Local tools and benchmarks
+pwsh/
+powershell.tar.gz
+benchmark.ps1
+test.ps1
