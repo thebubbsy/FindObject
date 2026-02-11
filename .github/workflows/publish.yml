@@ -1,0 +1,27 @@
+name: Publish to PowerShell Gallery
+
+on:
+  push:
+    branches:
+      - master
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Run Tests
+        shell: pwsh
+        run: ./test.ps1
+
+      - name: Publish to PowerShell Gallery
+        shell: pwsh
+        env:
+          NUGET_API_KEY: ${{ secrets.NUGET_API_KEY }}
+        run: |
+          if (-not $env:NUGET_API_KEY) {
+              Write-Error "NUGET_API_KEY secret is not set. Please add the secret 'NUGET_API_KEY' to the repository settings."
+              exit 1
+          }
+          Publish-Module -Path . -NuGetApiKey $env:NUGET_API_KEY -Verbose
