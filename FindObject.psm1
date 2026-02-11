@@ -98,6 +98,12 @@ function Find-ObjectByName {
         $script:FinderKeywords = $keywords
         $script:FinderLogic = $logic
 
+        # Pre-calculate wildcard patterns to avoid repeated string concatenation in the process block
+        # Using @() ensures the result is always an array even with a single keyword
+        $script:FinderWildcardPatterns = @(foreach ($keyword in $keywords) {
+            "*$keyword*"
+        })
+
         Write-Verbose "Finder initialized. Logic: $script:FinderLogic, Keywords: $($script:FinderKeywords -join ', ')"
     }
 
@@ -124,11 +130,14 @@ function Find-ObjectByName {
 
         # --- Apply Filtering Logic ---
         $match = $false
+        $keywordCount = $script:FinderKeywords.Count
         if ($script:FinderLogic -eq 'OR') {
             # OR Logic: Check if the name contains ANY of the keywords
             $match = $false # Assume no match initially for OR
-            foreach ($keyword in $script:FinderKeywords) {
-                if ($objectName -like "*$keyword*") {
+            for ($i = 0; $i -lt $keywordCount; $i++) {
+                $keyword = $script:FinderKeywords[$i]
+                $pattern = $script:FinderWildcardPatterns[$i]
+                if ($objectName -like $pattern) {
                     $match = $true
                     Write-Verbose "OR match found for keyword '$keyword' in name '$objectName'"
                     break # Found one match, no need to check others for OR
@@ -138,12 +147,14 @@ function Find-ObjectByName {
             # Logic is AND
             # AND Logic: Check if the name contains ALL of the keywords
             $match = $true # Assume it matches until proven otherwise for AND
-            if ($script:FinderKeywords.Count -eq 0) {
+            if ($keywordCount -eq 0) {
                 $match = $false # Cannot match AND with zero keywords
                 Write-Verbose 'AND logic requires keywords, none found. No match.'
             } else {
-                foreach ($keyword in $script:FinderKeywords) {
-                    if ($objectName -notlike "*$keyword*") {
+                for ($i = 0; $i -lt $keywordCount; $i++) {
+                    $keyword = $script:FinderKeywords[$i]
+                    $pattern = $script:FinderWildcardPatterns[$i]
+                    if ($objectName -notlike $pattern) {
                         $match = $false
                         Write-Verbose "AND condition failed: keyword '$keyword' not found in name '$objectName'"
                         break # Found one keyword that doesn't match, no need for further checks for AND
@@ -167,6 +178,9 @@ function Find-ObjectByName {
         # Cleanup script-scoped variables (optional, but good practice)
         if (Test-Path Variable:Script:FinderKeywords) {
             Remove-Variable -Name FinderKeywords -Scope Script -Force -ErrorAction SilentlyContinue
+        }
+        if (Test-Path Variable:Script:FinderWildcardPatterns) {
+            Remove-Variable -Name FinderWildcardPatterns -Scope Script -Force -ErrorAction SilentlyContinue
         }
         if (Test-Path Variable:Script:FinderLogic) {
             Remove-Variable -Name FinderLogic -Scope Script -Force -ErrorAction SilentlyContinue
