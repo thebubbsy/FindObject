@@ -1,0 +1,39 @@
+name: Post Merge Updates
+
+on:
+  push:
+    branches:
+      - master
+
+jobs:
+  post-update:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+        with:
+          fetch-depth: 0
+
+      - name: Post to APIP Postbox
+        shell: pwsh
+        env:
+          APIP_POSTBOX_URL: ${{ secrets.APIP_POSTBOX_URL }}
+        run: |
+          if ([string]::IsNullOrWhiteSpace($env:APIP_POSTBOX_URL)) {
+            Write-Error "Secret 'APIP_POSTBOX_URL' is not set. Please add it to your repository secrets."
+            exit 1
+          }
+
+          $msg = git log -1 --pretty=%B | Out-String
+          if ($null -eq $msg) { $msg = "" }
+
+          $payload = @{
+            commit_hash = $env:GITHUB_SHA
+            commit_message = $msg.Trim()
+            author = $env:GITHUB_ACTOR
+            repository = $env:GITHUB_REPOSITORY
+            branch = $env:GITHUB_REF_NAME
+            timestamp = (Get-Date).ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ssZ")
+          }
+          $jsonPayload = $payload | ConvertTo-Json -Compress
+
+          Invoke-RestMethod -Uri $env:APIP_POSTBOX_URL -Method Post -Body $jsonPayload -ContentType "application/json"
