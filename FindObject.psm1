@@ -92,13 +92,7 @@ function Find-ObjectByName {
             throw "No valid search keywords provided in '-SearchTerms' after parsing operators. Please provide at least one keyword."
         }
 
-        # Store parsed info for process block using script scope
-        # Script scope is used here to make variables easily accessible in the 'process' block
-        # without needing to pass them explicitly for each object.
-        $script:FinderKeywords = $keywords
-        $script:FinderLogic = $logic
-
-        Write-Verbose "Finder initialized. Logic: $script:FinderLogic, Keywords: $($script:FinderKeywords -join ', ')"
+        Write-Verbose "Finder initialized. Logic: $logic, Keywords: $($keywords -join ', ')"
     }
 
     process {
@@ -124,10 +118,10 @@ function Find-ObjectByName {
 
         # --- Apply Filtering Logic ---
         $match = $false
-        if ($script:FinderLogic -eq 'OR') {
+        if ($logic -eq 'OR') {
             # OR Logic: Check if the name contains ANY of the keywords
             $match = $false # Assume no match initially for OR
-            foreach ($keyword in $script:FinderKeywords) {
+            foreach ($keyword in $keywords) {
                 if ($objectName -like "*$keyword*") {
                     $match = $true
                     Write-Verbose "OR match found for keyword '$keyword' in name '$objectName'"
@@ -138,11 +132,11 @@ function Find-ObjectByName {
             # Logic is AND
             # AND Logic: Check if the name contains ALL of the keywords
             $match = $true # Assume it matches until proven otherwise for AND
-            if ($script:FinderKeywords.Count -eq 0) {
+            if ($keywords.Count -eq 0) {
                 $match = $false # Cannot match AND with zero keywords
                 Write-Verbose 'AND logic requires keywords, none found. No match.'
             } else {
-                foreach ($keyword in $script:FinderKeywords) {
+                foreach ($keyword in $keywords) {
                     if ($objectName -notlike "*$keyword*") {
                         $match = $false
                         Write-Verbose "AND condition failed: keyword '$keyword' not found in name '$objectName'"
@@ -164,13 +158,6 @@ function Find-ObjectByName {
     }
 
     end {
-        # Cleanup script-scoped variables (optional, but good practice)
-        if (Test-Path Variable:Script:FinderKeywords) {
-            Remove-Variable -Name FinderKeywords -Scope Script -Force -ErrorAction SilentlyContinue
-        }
-        if (Test-Path Variable:Script:FinderLogic) {
-            Remove-Variable -Name FinderLogic -Scope Script -Force -ErrorAction SilentlyContinue
-        }
         Write-Verbose 'Find-ObjectByName finished processing pipeline input.'
     }
 }
@@ -180,10 +167,3 @@ New-Alias -Name fob -Value Find-ObjectByName
 
 # Export the function and aliases
 Export-ModuleMember -Function Find-ObjectByName -Alias fob
-
-# Get-Command -Module MicrosoftTeams | Find-ObjectByName -SearchTerms get, or, policy
-# Get-Command -Module MicrosoftTeams | Find-ObjectByName -SearchTerms get, and, policy
-# Get-Command -Module MicrosoftTeams | Find-ObjectByName -SearchTerms user, sync # Default OR
-# Get-Command -Module MicrosoftTeams | Find-ObjectByName -SearchTerms meeting # Single term
-# Get-Service | Find-ObjectByName -SearchTerms spool, print, fax -Verbose
-# Get-Process | Find-ObjectByName -SearchTerms powershell, and, core -Verbose
