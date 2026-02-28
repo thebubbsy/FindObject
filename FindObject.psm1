@@ -180,10 +180,3 @@ New-Alias -Name fob -Value Find-ObjectByName
 
 # Export the function and aliases
 Export-ModuleMember -Function Find-ObjectByName -Alias fob
-
-# Get-Command -Module MicrosoftTeams | Find-ObjectByName -SearchTerms get, or, policy
-# Get-Command -Module MicrosoftTeams | Find-ObjectByName -SearchTerms get, and, policy
-# Get-Command -Module MicrosoftTeams | Find-ObjectByName -SearchTerms user, sync # Default OR
-# Get-Command -Module MicrosoftTeams | Find-ObjectByName -SearchTerms meeting # Single term
-# Get-Service | Find-ObjectByName -SearchTerms spool, print, fax -Verbose
-# Get-Process | Find-ObjectByName -SearchTerms powershell, and, core -Verbose
