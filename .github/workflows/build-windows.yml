@@ -1,0 +1,18 @@
+﻿name: Build Windows Artifact
+on:
+  push:
+    branches: [ "main", "master" ]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Zip Files for Windows
+        run: Compress-Archive -Path "*" -DestinationPath "FindObject-Windows.zip"
+      - name: Upload Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: FindObject-Windows
+          path: FindObject-Windows.zip
