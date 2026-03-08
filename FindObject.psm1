@@ -73,8 +73,10 @@ function Find-ObjectByName {
             } else {
                 # Add non-operator terms to keywords list
                 if (-not [string]::IsNullOrWhiteSpace($term)) {
-                    $keywords.Add($term)
-                    Write-Verbose "Keyword added: $term"
+                    # Bolt Optimization: Pre-compute wildcard strings in the begin block
+                    # This prevents string interpolation ("*$keyword*") for every object in the process block pipeline
+                    $keywords.Add("*$term*")
+                    Write-Verbose "Keyword added (with wildcards): *$term*"
                 } else {
                     Write-Verbose 'Skipping empty or whitespace term.'
                 }
@@ -128,7 +130,8 @@ function Find-ObjectByName {
             # OR Logic: Check if the name contains ANY of the keywords
             $match = $false # Assume no match initially for OR
             foreach ($keyword in $FinderKeywords) {
-                if ($objectName -like "*$keyword*") {
+                # Bolt Optimization: Used pre-computed $keyword instead of interpolating "*$keyword*"
+                if ($objectName -like $keyword) {
                     $match = $true
                     Write-Verbose "OR match found for keyword '$keyword' in name '$objectName'"
                     break # Found one match, no need to check others for OR
@@ -143,7 +146,8 @@ function Find-ObjectByName {
                 Write-Verbose 'AND logic requires keywords, none found. No match.'
             } else {
                 foreach ($keyword in $FinderKeywords) {
-                    if ($objectName -notlike "*$keyword*") {
+                    # Bolt Optimization: Used pre-computed $keyword instead of interpolating "*$keyword*"
+                    if ($objectName -notlike $keyword) {
                         $match = $false
                         Write-Verbose "AND condition failed: keyword '$keyword' not found in name '$objectName'"
                         break # Found one keyword that doesn't match, no need for further checks for AND
