@@ -96,6 +96,15 @@ function Find-ObjectByName {
         # Variables defined in the 'begin' block are automatically accessible in the 'process' block
         # without needing to pass them explicitly for each object.
         $FinderKeywords = $keywords
+
+        # ⚡ BOLT OPTIMIZATION: Pre-calculate wildcard patterns once in the begin block
+        # String interpolation (like "*$keyword*") inside the process block is expensive
+        # when processing thousands of pipeline objects. Doing it once here saves allocations.
+        $FinderPatterns = [System.Collections.Generic.List[string]]::new()
+        foreach ($k in $FinderKeywords) {
+            $FinderPatterns.Add("*$k*")
+        }
+
         $FinderLogic = $logic
 
         Write-Verbose "Finder initialized. Logic: $FinderLogic, Keywords: $($FinderKeywords -join ', ')"
@@ -127,10 +136,10 @@ function Find-ObjectByName {
         if ($FinderLogic -eq 'OR') {
             # OR Logic: Check if the name contains ANY of the keywords
             $match = $false # Assume no match initially for OR
-            foreach ($keyword in $FinderKeywords) {
-                if ($objectName -like "*$keyword*") {
+            foreach ($pattern in $FinderPatterns) {
+                if ($objectName -like $pattern) {
                     $match = $true
-                    Write-Verbose "OR match found for keyword '$keyword' in name '$objectName'"
+                    Write-Verbose "OR match found for pattern '$pattern' in name '$objectName'"
                     break # Found one match, no need to check others for OR
                 }
             }
@@ -138,17 +147,17 @@ function Find-ObjectByName {
             # Logic is AND
             # AND Logic: Check if the name contains ALL of the keywords
             $match = $true # Assume it matches until proven otherwise for AND
-            if ($FinderKeywords.Count -eq 0) {
+            if ($FinderPatterns.Count -eq 0) {
                 $match = $false # Cannot match AND with zero keywords
                 Write-Verbose 'AND logic requires keywords, none found. No match.'
             } else {
-                foreach ($keyword in $FinderKeywords) {
-                    if ($objectName -notlike "*$keyword*") {
+                foreach ($pattern in $FinderPatterns) {
+                    if ($objectName -notlike $pattern) {
                         $match = $false
-                        Write-Verbose "AND condition failed: keyword '$keyword' not found in name '$objectName'"
+                        Write-Verbose "AND condition failed: pattern '$pattern' not found in name '$objectName'"
                         break # Found one keyword that doesn't match, no need for further checks for AND
                     } else {
-                        Write-Verbose "AND condition met (so far): keyword '$keyword' found in name '$objectName'"
+                        Write-Verbose "AND condition met (so far): pattern '$pattern' found in name '$objectName'"
                     }
                 }
             }
