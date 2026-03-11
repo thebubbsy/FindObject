@@ -96,6 +96,13 @@ function Find-ObjectByName {
         # Variables defined in the 'begin' block are automatically accessible in the 'process' block
         # without needing to pass them explicitly for each object.
         $FinderKeywords = $keywords
+
+        # Pre-calculate wildcard patterns to avoid string interpolation per object in the process block
+        $FinderPatterns = [System.Collections.Generic.List[string]]::new()
+        foreach ($k in $FinderKeywords) {
+            $FinderPatterns.Add("*$k*")
+        }
+
         $FinderLogic = $logic
 
         Write-Verbose "Finder initialized. Logic: $FinderLogic, Keywords: $($FinderKeywords -join ', ')"
@@ -127,8 +134,10 @@ function Find-ObjectByName {
         if ($FinderLogic -eq 'OR') {
             # OR Logic: Check if the name contains ANY of the keywords
             $match = $false # Assume no match initially for OR
-            foreach ($keyword in $FinderKeywords) {
-                if ($objectName -like "*$keyword*") {
+            for ($i = 0; $i -lt $FinderKeywords.Count; $i++) {
+                $keyword = $FinderKeywords[$i]
+                $pattern = $FinderPatterns[$i]
+                if ($objectName -like $pattern) {
                     $match = $true
                     Write-Verbose "OR match found for keyword '$keyword' in name '$objectName'"
                     break # Found one match, no need to check others for OR
@@ -142,8 +151,10 @@ function Find-ObjectByName {
                 $match = $false # Cannot match AND with zero keywords
                 Write-Verbose 'AND logic requires keywords, none found. No match.'
             } else {
-                foreach ($keyword in $FinderKeywords) {
-                    if ($objectName -notlike "*$keyword*") {
+                for ($i = 0; $i -lt $FinderKeywords.Count; $i++) {
+                    $keyword = $FinderKeywords[$i]
+                    $pattern = $FinderPatterns[$i]
+                    if ($objectName -notlike $pattern) {
                         $match = $false
                         Write-Verbose "AND condition failed: keyword '$keyword' not found in name '$objectName'"
                         break # Found one keyword that doesn't match, no need for further checks for AND
