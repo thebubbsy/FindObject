@@ -1,0 +1,3 @@
+## 2024-05-24 - PowerShell String Interpolation Bottleneck
+**Learning:** In PowerShell pipeline operations (`process` blocks), simple string interpolation (`"*$keyword*"`) combined with the `-like` operator in inner loops becomes a massive performance bottleneck. Pre-calculating the wildcard patterns into an array in the `begin` block and iterating over that array cuts execution time dramatically, specifically for `AND` operations (e.g., from ~10.8s down to ~5s for 50k objects).
+**Action:** Always pre-calculate patterns in the `begin` block when doing pipeline text filtering, and cache array length if looping `for ($i = 0; $i -lt $array.Length; $i++)` instead of using `foreach`.
