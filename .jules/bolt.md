@@ -1,0 +1,3 @@
+## 2024-05-24 - Pre-calculating Patterns and using for loop in process blocks
+**Learning:** PowerShell pipeline performance is heavily bottlenecked by string interpolation (like `"*$keyword*"`) inside `process` blocks. In addition, iterating over arrays using a standard `for` loop with a pre-cached `.Length` property is measurably faster than using `foreach` inside high-throughput `process` blocks.
+**Action:** Optimize this by pre-calculating patterns in the `begin` block and storing them in function-scoped variables to ensure proper encapsulation and avoid redundant per-object allocations. Use a standard `for` loop with cached length for array iterations in the `process` block.
