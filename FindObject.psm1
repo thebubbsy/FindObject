@@ -95,10 +95,15 @@ function Find-ObjectByName {
         # Store parsed info for process block using function scope
         # Variables defined in the 'begin' block are automatically accessible in the 'process' block
         # without needing to pass them explicitly for each object.
-        $FinderKeywords = $keywords
         $FinderLogic = $logic
 
-        Write-Verbose "Finder initialized. Logic: $FinderLogic, Keywords: $($FinderKeywords -join ', ')"
+        # Pre-calculate wildcard patterns here to avoid per-object string interpolation in the process block
+        $FinderPatterns = [string[]]::new($keywords.Count)
+        for ($i = 0; $i -lt $keywords.Count; $i++) {
+            $FinderPatterns[$i] = "*$($keywords[$i])*"
+        }
+
+        Write-Verbose "Finder initialized. Logic: $FinderLogic, Keywords: $($keywords -join ', ')"
     }
 
     process {
@@ -115,52 +120,54 @@ function Find-ObjectByName {
             return # Skip this object
         }
 
-        # Ensure it's a string before doing string operations
-        $objectName = $objectName.ToString()
+        # Fast path check for string to avoid expensive ToString() if possible
+        if ($objectName -isnot [string]) {
+            $objectName = [string]$objectName
+        }
+
         if ([string]::IsNullOrWhiteSpace($objectName)) {
             Write-Verbose "Input object's Name property is empty or whitespace. Skipping."
             return # Skip this object
         }
 
         # --- Apply Filtering Logic ---
-        $match = $false
         if ($FinderLogic -eq 'OR') {
             # OR Logic: Check if the name contains ANY of the keywords
-            $match = $false # Assume no match initially for OR
-            foreach ($keyword in $FinderKeywords) {
-                if ($objectName -like "*$keyword*") {
-                    $match = $true
-                    Write-Verbose "OR match found for keyword '$keyword' in name '$objectName'"
-                    break # Found one match, no need to check others for OR
+            # Using pre-cached length and for loop for pipeline processing speed
+            $patternCount = $FinderPatterns.Length
+            for ($i = 0; $i -lt $patternCount; $i++) {
+                if ($objectName -like $FinderPatterns[$i]) {
+                    Write-Verbose "OR match found for pattern '$($FinderPatterns[$i])' in name '$objectName'"
+                    Write-Verbose "Object '$objectName' passed the filter. Outputting."
+                    Write-Output $InputObject
+                    return # Fast return, avoids managing $match variable
                 }
             }
         } else {
             # Logic is AND
             # AND Logic: Check if the name contains ALL of the keywords
-            $match = $true # Assume it matches until proven otherwise for AND
-            if ($FinderKeywords.Count -eq 0) {
-                $match = $false # Cannot match AND with zero keywords
+            $patternCount = $FinderPatterns.Length
+            if ($patternCount -eq 0) {
                 Write-Verbose 'AND logic requires keywords, none found. No match.'
+                return
             } else {
-                foreach ($keyword in $FinderKeywords) {
-                    if ($objectName -notlike "*$keyword*") {
-                        $match = $false
-                        Write-Verbose "AND condition failed: keyword '$keyword' not found in name '$objectName'"
-                        break # Found one keyword that doesn't match, no need for further checks for AND
+                for ($i = 0; $i -lt $patternCount; $i++) {
+                    if ($objectName -notlike $FinderPatterns[$i]) {
+                        Write-Verbose "AND condition failed: pattern '$($FinderPatterns[$i])' not found in name '$objectName'"
+                        return # Fast return, avoids managing $match variable
                     } else {
-                        Write-Verbose "AND condition met (so far): keyword '$keyword' found in name '$objectName'"
+                        Write-Verbose "AND condition met (so far): pattern '$($FinderPatterns[$i])' found in name '$objectName'"
                     }
                 }
+
+                # If we made it here in AND logic, all patterns matched
+                Write-Verbose "Object '$objectName' passed the filter. Outputting."
+                Write-Output $InputObject
+                return
             }
         }
 
-        # --- Output if Match ---
-        if ($match) {
-            Write-Verbose "Object '$objectName' passed the filter. Outputting."
-            Write-Output $InputObject
-        } else {
-            Write-Verbose "Object '$objectName' did not pass the filter."
-        }
+        Write-Verbose "Object '$objectName' did not pass the filter."
     }
 
     end {
