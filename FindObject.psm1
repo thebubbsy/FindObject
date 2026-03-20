@@ -98,6 +98,14 @@ function Find-ObjectByName {
         $FinderKeywords = $keywords
         $FinderLogic = $logic
 
+        # ⚡ Bolt Optimization: Pre-calculate wildcard patterns in the begin block
+        # This avoids expensive string interpolation ("*$keyword*") for every object in the process block
+        $FinderPatternsArray = [string[]]::new($FinderKeywords.Count)
+        for ($i = 0; $i -lt $FinderKeywords.Count; $i++) {
+            $FinderPatternsArray[$i] = "*$($FinderKeywords[$i])*"
+        }
+        $FinderPatternsCount = $FinderPatternsArray.Length
+
         Write-Verbose "Finder initialized. Logic: $FinderLogic, Keywords: $($FinderKeywords -join ', ')"
     }
 
@@ -116,7 +124,12 @@ function Find-ObjectByName {
         }
 
         # Ensure it's a string before doing string operations
-        $objectName = $objectName.ToString()
+        # ⚡ Bolt Optimization: Use -isnot [string] and direct casting
+        # This is faster than calling .ToString() and avoids null reference exceptions on arbitrary objects
+        if ($objectName -isnot [string]) {
+            $objectName = [string]$objectName
+        }
+
         if ([string]::IsNullOrWhiteSpace($objectName)) {
             Write-Verbose "Input object's Name property is empty or whitespace. Skipping."
             return # Skip this object
@@ -127,10 +140,14 @@ function Find-ObjectByName {
         if ($FinderLogic -eq 'OR') {
             # OR Logic: Check if the name contains ANY of the keywords
             $match = $false # Assume no match initially for OR
-            foreach ($keyword in $FinderKeywords) {
-                if ($objectName -like "*$keyword*") {
+
+            # ⚡ Bolt Optimization: Use a standard for loop with pre-cached Length
+            # This avoids the overhead of foreach when processing thousands of pipeline objects
+            for ($i = 0; $i -lt $FinderPatternsCount; $i++) {
+                $pattern = $FinderPatternsArray[$i]
+                if ($objectName -like $pattern) {
                     $match = $true
-                    Write-Verbose "OR match found for keyword '$keyword' in name '$objectName'"
+                    Write-Verbose "OR match found for keyword '$pattern' in name '$objectName'"
                     break # Found one match, no need to check others for OR
                 }
             }
@@ -138,17 +155,19 @@ function Find-ObjectByName {
             # Logic is AND
             # AND Logic: Check if the name contains ALL of the keywords
             $match = $true # Assume it matches until proven otherwise for AND
-            if ($FinderKeywords.Count -eq 0) {
+            if ($FinderPatternsCount -eq 0) {
                 $match = $false # Cannot match AND with zero keywords
                 Write-Verbose 'AND logic requires keywords, none found. No match.'
             } else {
-                foreach ($keyword in $FinderKeywords) {
-                    if ($objectName -notlike "*$keyword*") {
+                # ⚡ Bolt Optimization: Use a standard for loop with pre-cached Length
+                for ($i = 0; $i -lt $FinderPatternsCount; $i++) {
+                    $pattern = $FinderPatternsArray[$i]
+                    if ($objectName -notlike $pattern) {
                         $match = $false
-                        Write-Verbose "AND condition failed: keyword '$keyword' not found in name '$objectName'"
+                        Write-Verbose "AND condition failed: keyword '$pattern' not found in name '$objectName'"
                         break # Found one keyword that doesn't match, no need for further checks for AND
                     } else {
-                        Write-Verbose "AND condition met (so far): keyword '$keyword' found in name '$objectName'"
+                        Write-Verbose "AND condition met (so far): keyword '$pattern' found in name '$objectName'"
                     }
                 }
             }
