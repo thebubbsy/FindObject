@@ -1,0 +1,3 @@
+## 2024-05-18 - Pre-calculating Strings & Array Loops
+**Learning:** PowerShell pipeline processing takes a significant hit when evaluating string interpolation (e.g. `"*$keyword*"`) repeatedly for every pipeline object inside a `process` block. Further, iterating over collections using `foreach` with state variables (`$match`) incurs substantial overhead compared to using standard `for` loops combined with early `return`.
+**Action:** When working in high-throughput PowerShell advanced functions, always pre-calculate format strings or wildcards in the `begin` block. Use a `for` loop cached with `.Length` and leverage `return` for early exit logic instead of keeping track of state variables within a `process` block.
