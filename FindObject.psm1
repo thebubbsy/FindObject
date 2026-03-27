@@ -95,10 +95,13 @@ function Find-ObjectByName {
         # Store parsed info for process block using function scope
         # Variables defined in the 'begin' block are automatically accessible in the 'process' block
         # without needing to pass them explicitly for each object.
-        $FinderKeywords = $keywords
-        $FinderLogic = $logic
 
-        Write-Verbose "Finder initialized. Logic: $FinderLogic, Keywords: $($FinderKeywords -join ', ')"
+        # ⚡ Bolt Optimization: Pre-calculate wildcard patterns to avoid per-object string interpolation
+        $FinderKeywords = @($keywords | ForEach-Object { "*$_*" })
+        $FinderLogic = $logic
+        $FinderKeywordCount = $FinderKeywords.Length
+
+        Write-Verbose "Finder initialized. Logic: $FinderLogic, Keywords: $($keywords -join ', ')"
     }
 
     process {
@@ -109,58 +112,58 @@ function Find-ObjectByName {
         }
 
         # Check if the input object has a 'Name' property
+        # ⚡ Bolt Optimization: Direct property access is faster than reflection
         $objectName = $InputObject.Name
         if ($null -eq $objectName) {
-            Write-Verbose "Input object type '$($InputObject.GetType().FullName)' does not have a 'Name' property or it is null. Skipping."
+            Write-Verbose "Input object does not have a 'Name' property or it is null. Skipping."
             return # Skip this object
         }
 
         # Ensure it's a string before doing string operations
-        $objectName = $objectName.ToString()
+        # ⚡ Bolt Optimization: Type casting is faster than calling .ToString() and avoids null ref issues
+        if ($objectName -isnot [string]) {
+            $objectName = [string]$objectName
+        }
+
         if ([string]::IsNullOrWhiteSpace($objectName)) {
             Write-Verbose "Input object's Name property is empty or whitespace. Skipping."
             return # Skip this object
         }
 
         # --- Apply Filtering Logic ---
-        $match = $false
         if ($FinderLogic -eq 'OR') {
             # OR Logic: Check if the name contains ANY of the keywords
-            $match = $false # Assume no match initially for OR
-            foreach ($keyword in $FinderKeywords) {
-                if ($objectName -like "*$keyword*") {
-                    $match = $true
-                    Write-Verbose "OR match found for keyword '$keyword' in name '$objectName'"
-                    break # Found one match, no need to check others for OR
+            # ⚡ Bolt Optimization: Use a standard `for` loop with pre-cached length instead of `foreach`
+            for ($i = 0; $i -lt $FinderKeywordCount; $i++) {
+                if ($objectName -like $FinderKeywords[$i]) {
+                    Write-Verbose "OR match found in name '$objectName'"
+                    Write-Output $InputObject
+                    return # Early return, no need to check others or maintain state variable
                 }
             }
         } else {
             # Logic is AND
             # AND Logic: Check if the name contains ALL of the keywords
-            $match = $true # Assume it matches until proven otherwise for AND
-            if ($FinderKeywords.Count -eq 0) {
-                $match = $false # Cannot match AND with zero keywords
+            if ($FinderKeywordCount -eq 0) {
                 Write-Verbose 'AND logic requires keywords, none found. No match.'
-            } else {
-                foreach ($keyword in $FinderKeywords) {
-                    if ($objectName -notlike "*$keyword*") {
-                        $match = $false
-                        Write-Verbose "AND condition failed: keyword '$keyword' not found in name '$objectName'"
-                        break # Found one keyword that doesn't match, no need for further checks for AND
-                    } else {
-                        Write-Verbose "AND condition met (so far): keyword '$keyword' found in name '$objectName'"
-                    }
+                return
+            }
+
+            # ⚡ Bolt Optimization: Use a standard `for` loop with pre-cached length instead of `foreach`
+            for ($i = 0; $i -lt $FinderKeywordCount; $i++) {
+                if ($objectName -notlike $FinderKeywords[$i]) {
+                    Write-Verbose "AND condition failed in name '$objectName'"
+                    return # Early return, found one keyword that doesn't match
                 }
             }
+
+            # If we made it here, all AND conditions passed
+            Write-Verbose "Object '$objectName' passed the AND filter. Outputting."
+            Write-Output $InputObject
+            return
         }
 
-        # --- Output if Match ---
-        if ($match) {
-            Write-Verbose "Object '$objectName' passed the filter. Outputting."
-            Write-Output $InputObject
-        } else {
-            Write-Verbose "Object '$objectName' did not pass the filter."
-        }
+        Write-Verbose "Object '$objectName' did not pass the filter."
     }
 
     end {
