@@ -1,0 +1,3 @@
+## 2024-05-24 - High-Throughput Pipeline Performance
+**Learning:** In PowerShell advanced functions, the `process` block is heavily bottlenecked by string interpolation (e.g., `"*$keyword*"`), `foreach` loops, and reflection (`GetType().FullName`) when run against thousands of pipeline objects. Also, checking for string types with `.ToString()` can cause null reference exceptions or slow execution compared to `-isnot [string]` checks.
+**Action:** Always pre-calculate patterns and array lengths in the `begin` block. Use traditional `for` loops instead of `foreach` for iteration. Avoid reflection in `Write-Verbose` and replace state variables with early `return` to skip pipeline items faster.
