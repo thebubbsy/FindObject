@@ -1,0 +1,3 @@
+## 2024-04-03 - String Interpolation and Loops in PowerShell Process Blocks
+**Learning:** PowerShell pipeline performance is heavily bottlenecked by per-object string interpolation (`"*$keyword*"`) and `foreach` loop iteration inside high-throughput `process` blocks. Calling `.ToString()` on arbitrary pipeline objects is also slower than using the `-isnot [string]` operator followed by type casting `[string]`.
+**Action:** Pre-calculate patterns in the `begin` block using the `@(...)` subexpression operator and use a standard `for` loop with a pre-cached `.Length` property in the `process` block. Use the `-isnot [string]` pattern for faster type checking and conversion. Also, use early `return` to skip processing the remaining objects.
