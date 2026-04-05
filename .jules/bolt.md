@@ -1,0 +1,3 @@
+## 2026-04-05 - Optimize PowerShell Pipeline String Interpolation
+**Learning:** String interpolation inside a PowerShell `process` block (like `"*$keyword*"`) is a major performance bottleneck for high-throughput pipelines. Additionally, using an intermediate `$match` variable and iterating fully over condition checks is slower than early `return` statements to skip to the next pipeline object.
+**Action:** Pre-calculate wildcard patterns into function-scoped variables in the `begin` block instead of evaluating them per-object. Use early returns inside loops within `process` blocks to fast-fail on missed conditions, bypassing unnecessary logic.
