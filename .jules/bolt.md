@@ -1,0 +1,5 @@
+## 2024-05-24 - PowerShell Pipeline Performance Pitfalls
+
+**Learning:** PowerShell evaluates string interpolation (like `$($Object.GetType().FullName)`) inside `Write-Verbose` and `Write-Debug` calls *before* executing the command, even when verbose logging is disabled! Additionally, wrapping variables in wildcards for every pipeline object causes massive overhead due to constant redundant string allocations. Also, iterating with standard `for` loops using cached lengths is significantly faster than `foreach` inside high-throughput `process` blocks. Finally, maintaining state variables like `$match` is slower than simply using an early `return` to skip to the next pipeline item.
+
+**Action:** When writing high-throughput PowerShell functions, never use complex interpolation inside `Write-Verbose` within the `process` block. Pre-calculate search patterns with wildcards in the `begin` block to avoid per-object string allocation. Iterate using standard `for` loops instead of `foreach`, and heavily utilize early `return` to terminate the process block early upon condition failure rather than carrying state variables.
