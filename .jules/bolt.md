@@ -1,0 +1,3 @@
+## 2026-04-11 - Pre-calculating PowerShell Wildcard Patterns
+**Learning:** PowerShell pipeline performance is heavily bottlenecked by string interpolation (e.g., `"*$keyword*"`) inside high-throughput `process` blocks. Iterating over arrays using a standard `for` loop with a pre-cached `.Length` property is measurably faster than using `foreach` inside high-throughput `process` blocks.
+**Action:** Pre-calculate patterns in the `begin` block and store them in function-scoped variables to ensure proper encapsulation and avoid redundant per-object allocations. Use a `for` loop with a cached `.Length` property instead of `foreach` in the `process` block.
