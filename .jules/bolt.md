@@ -1,0 +1,3 @@
+## 2024-04-13 - PowerShell Pipeline Optimizations
+**Learning:** PowerShell pipeline processing is heavily bottlenecked by string interpolation (e.g., `"*$keyword*"`) inside `process` blocks. Also, looping with a cached array `.Length` and using a `for` loop is much faster than `foreach` in high-throughput `process` blocks. An early return instead of assigning state to a `$match` variable is more performant in PowerShell `process` blocks.
+**Action:** Pre-calculate wildcard patterns in the `begin` block, use `for` loops with pre-cached `.Length`, and utilize early `return` inside `process` blocks to skip processing the remainder of the pipeline.
