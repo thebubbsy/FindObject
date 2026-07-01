@@ -12,7 +12,7 @@
 RootModule = 'FindObject.psm1'
 
 # Version number of this module.
-ModuleVersion = '1.0.1'
+ModuleVersion = '1.1.0'
 
 # Supported PSEditions
 # CompatiblePSEditions = @()
@@ -30,7 +30,7 @@ CompanyName = 'Personal'
 Copyright = '(c) 2025 Matthew Bubb. All rights reserved.'
 
 # Description of the functionality provided by this module
-Description = 'Filter objects by name with logical operators (AND/OR/NOT). Powerful object filtering for the PowerShell pipeline with intuitive syntax and flexible filtering options.'
+Description = 'Filter pipeline objects by any property (or their own string form) using AND/OR/NOT logic, with Contains, StartsWith, or Fuzzy matching, optional colorized highlighting, and persistable defaults.'
 
 # Minimum version of the PowerShell engine required by this module
 PowerShellVersion = '5.1'
@@ -69,7 +69,7 @@ PowerShellVersion = '5.1'
 # NestedModules = @()
 
 # Functions to export from this module, for best performance, do not use wildcards and do not delete the entry, use an empty array if there are no functions to export.
-FunctionsToExport = 'Find-ObjectByName'
+FunctionsToExport = 'Find-ObjectByName', 'Get-FindObjectConfig', 'Set-FindObjectConfig'
 
 # Cmdlets to export from this module, for best performance, do not use wildcards and do not delete the entry, use an empty array if there are no cmdlets to export.
 CmdletsToExport = @()
@@ -95,7 +95,7 @@ PrivateData = @{
     PSData = @{
 
         # Tags applied to this module. These help with module discovery in online galleries.
-        Tags = 'filter','search','object','name','logical-operators','pipeline','utility','productivity'
+        Tags = 'filter','search','fuzzy','object','name','logical-operators','pipeline','utility','productivity'
 
         # A URL to the license for this module.
         LicenseUri = 'https://github.com/thebubbsy/FindObject/blob/main/LICENSE'
@@ -107,7 +107,15 @@ PrivateData = @{
         # IconUri = ''
 
         # ReleaseNotes of this module
-        ReleaseNotes = 'v1.0.0 - Initial Release
+        ReleaseNotes = 'v1.1.0
+- Fixed NOT logic and natural "term OR term NOT term" syntax to match documented behavior
+- Added -Mode Contains/StartsWith/Fuzzy matching
+- Added -Property and -AsString to match against any property or the object''s own string form
+- Added -Highlight for colorized console previews (objects still flow through the pipeline unchanged)
+- Added Get-FindObjectConfig / Set-FindObjectConfig for persistable defaults
+- Removed stray build/scratch files that had accumulated in the repo root
+
+v1.0.0 - Initial Release
 - Filter objects by name with logical operators
 - Support for AND, OR, and NOT logic
 - Pipeline-friendly design
