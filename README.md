@@ -106,12 +106,20 @@ fob 'file\d+\.log' -Mode Regex   # .NET regular expression
 
 ### Any Property — or All of Them
 
-```powershell
-# Target a specific property
-Get-Process | fob "svchost" -Property ProcessName
+By default, `fob` matches against `.Name`. You can target any property, nested dotted path, or search all properties at once:
 
-# Search every string property on the object
-Get-Service | fob "running" -Property *
+```powershell
+# Target an app by its active window title instead of its binary name
+Get-Process | fob "Terminal OR Chrome" -Property MainWindowTitle
+
+# Target a service by what it actually does (human-friendly DisplayName)
+Get-Service | fob "Windows Update OR Defender" -Property DisplayName
+
+# Dotted navigation into nested object properties
+Get-ChildItem -Recurse | fob "Microsoft" -Property VersionInfo.CompanyName
+
+# Search every property on the object simultaneously
+Get-Service | fob "Defender AND Running" -Property *
 
 # Match plain strings / objects with no Name
 "apple pie", "banana bread" | fob "pie" -AsString
