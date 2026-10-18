@@ -898,6 +898,8 @@ function Find-ObjectByName {
         [Alias('Stats')]
         [switch]$Summary,
 
+        [switch]$CopyMatches,
+
         [Parameter(ParameterSetName = 'Default')]
         [ValidateRange(1, [int]::MaxValue)]
         [int]$First,
@@ -955,6 +957,7 @@ function Find-ObjectByName {
         $script:foProcessed = 0
         $script:foSkipped = 0
         $script:foDone = $false
+        $script:foCopiedValues = if ($CopyMatches) { [System.Collections.Generic.List[string]]::new() } else { $null }
 
         Write-Verbose "FindObject: Mode=$Mode Property=$Property CaseSensitive=$CaseSensitive Clauses=$clauseCount"
     }
@@ -989,6 +992,11 @@ function Find-ObjectByName {
         # -Count: just tally
         if ($Count) { return }
 
+        if ($CopyMatches -and $null -ne $script:foCopiedValues) {
+            $valToCopy = if ($values.Count -gt 0) { [string]$values[0] } else { [string]$InputObject }
+            $script:foCopiedValues.Add($valToCopy)
+        }
+
         # -Highlight: in-band ANSI formatting emitted cleanly to pipeline stream
         $outputObject = $InputObject
         if ($Highlight -and $Mode -ne 'Fuzzy') {
@@ -1022,6 +1030,14 @@ function Find-ObjectByName {
     end {
         if ($script:foStopwatch) { $script:foStopwatch.Stop() }
         $elapsedMs = if ($script:foStopwatch) { [Math]::Round($script:foStopwatch.Elapsed.TotalMilliseconds, 1) } else { 0 }
+        $ratePerSec = if ($script:foStopwatch -and $script:foStopwatch.Elapsed.TotalSeconds -gt 0) { [int][Math]::Round($script:foProcessed / $script:foStopwatch.Elapsed.TotalSeconds) } else { $script:foProcessed }
+
+        if ($CopyMatches -and $null -ne $script:foCopiedValues -and $script:foCopiedValues.Count -gt 0) {
+            try {
+                Set-Clipboard -Value ($script:foCopiedValues -join [Environment]::NewLine) -ErrorAction Stop
+                Write-Host "  [CLIPBOARD] Copied $($script:foCopiedValues.Count) matched value(s) to clipboard." -ForegroundColor Green
+            } catch {}
+        }
 
         if ($Summary) {
             $hitPct = if ($script:foProcessed -gt 0) { [int][Math]::Round(($script:foEmitted / $script:foProcessed) * 100) } else { 0 }
@@ -1031,7 +1047,7 @@ function Find-ObjectByName {
             $propLabel = if ($AsString) { 'ToString()' } else { $Property }
             Write-Host "`n  +----------------------------------------------------------------------+" -ForegroundColor DarkCyan
             Write-Host "  | FindObject Match Telemetry   [$bar] $script:foEmitted / $script:foProcessed matched ($hitPct%)" -ForegroundColor $barColor
-            Write-Host "  | Mode: $Mode | Property: $propLabel | Clauses: $clauseCount | Elapsed: ${elapsedMs}ms" -ForegroundColor Cyan
+            Write-Host "  | Mode: $Mode | Property: $propLabel | Clauses: $clauseCount | ${elapsedMs}ms ($ratePerSec objs/s)" -ForegroundColor Cyan
             Write-Host "  +----------------------------------------------------------------------+" -ForegroundColor DarkCyan
         }
 
