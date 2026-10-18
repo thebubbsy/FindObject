@@ -684,23 +684,40 @@ function ConvertTo-FindObjectClauses {
 }
 
 function Format-FindObjectHighlight {
-    <# Wraps keyword occurrences in ANSI bold-yellow for terminal display. #>
+    <# Wraps keyword or regex occurrences in ANSI bold-yellow for terminal display. #>
     param(
         [string]$Text,
         [string[]]$Keywords,
-        [System.StringComparison]$Comparison
+        [System.StringComparison]$Comparison,
+        [string]$Mode = 'Contains'
     )
 
     $ranges = [System.Collections.Generic.List[object]]::new()
 
     foreach ($keyword in $Keywords) {
         if ([string]::IsNullOrEmpty($keyword)) { continue }
-        $searchFrom = 0
-        while ($searchFrom -lt $Text.Length) {
-            $idx = $Text.IndexOf($keyword, $searchFrom, $Comparison)
-            if ($idx -lt 0) { break }
-            $ranges.Add(@{ Start = $idx; End = $idx + $keyword.Length })
-            $searchFrom = $idx + [Math]::Max(1, $keyword.Length)
+        if ($Mode -eq 'Regex') {
+            $rxOpts = if ($Comparison -eq [System.StringComparison]::Ordinal) {
+                [System.Text.RegularExpressions.RegexOptions]::None
+            } else {
+                [System.Text.RegularExpressions.RegexOptions]::IgnoreCase
+            }
+            try {
+                $rxMatches = [System.Text.RegularExpressions.Regex]::Matches($Text, $keyword, $rxOpts)
+                foreach ($m in $rxMatches) {
+                    if ($m.Success -and $m.Length -gt 0) {
+                        $ranges.Add(@{ Start = $m.Index; End = $m.Index + $m.Length })
+                    }
+                }
+            } catch {}
+        } else {
+            $searchFrom = 0
+            while ($searchFrom -lt $Text.Length) {
+                $idx = $Text.IndexOf($keyword, $searchFrom, $Comparison)
+                if ($idx -lt 0) { break }
+                $ranges.Add(@{ Start = $idx; End = $idx + $keyword.Length })
+                $searchFrom = $idx + [Math]::Max(1, $keyword.Length)
+            }
         }
     }
 
@@ -779,6 +796,10 @@ function Find-ObjectByName {
         Print a colorized preview to the console (matched text in bold yellow) while still
         passing the original objects through the pipeline unchanged.
 
+    .PARAMETER Summary
+        Display a colorized console telemetry HUD summary bar at the end of pipeline execution
+        showing matched vs. scanned count, hit rate bar, active mode/property, and elapsed ms.
+
     .PARAMETER First
         Stop after emitting this many matches. Enables early pipeline termination for
         significant performance gains on large input sets.
@@ -804,9 +825,9 @@ function Find-ObjectByName {
         First 10 PowerShell scripts that don't contain "backup" in the name.
 
     .EXAMPLE
-        Get-Service | fob "sql" -Property DisplayName -Highlight
+        Get-Service | fob "sql" -Property DisplayName -Highlight -Summary
 
-        Services with "sql" in their display name, with colorized output.
+        Services with "sql" in their display name, with colorized output and a telemetry summary HUD.
 
     .EXAMPLE
         Get-Process | fob "crome" -Mode Fuzzy
@@ -874,6 +895,9 @@ function Find-ObjectByName {
 
         [switch]$Highlight,
 
+        [Alias('Stats')]
+        [switch]$Summary,
+
         [Parameter(ParameterSetName = 'Default')]
         [ValidateRange(1, [int]::MaxValue)]
         [int]$First,
@@ -890,6 +914,8 @@ function Find-ObjectByName {
     )
 
     begin {
+        $script:foStopwatch = [System.Diagnostics.Stopwatch]::StartNew()
+
         # Resolve defaults from config
         if (-not $PSBoundParameters.ContainsKey('Mode')) { $Mode = $script:FindObjectConfig.Mode }
         if (-not $PSBoundParameters.ContainsKey('Property')) { $Property = $script:FindObjectConfig.Property }
@@ -965,7 +991,7 @@ function Find-ObjectByName {
 
         # -Highlight: in-band ANSI formatting emitted cleanly to pipeline stream
         $outputObject = $InputObject
-        if ($Highlight -and $Mode -ne 'Fuzzy' -and $Mode -ne 'Regex') {
+        if ($Highlight -and $Mode -ne 'Fuzzy') {
             $targetProp = if ([string]::IsNullOrEmpty($Property) -or $Property -eq '*') { 'Name' } else { $Property }
             if (-not $AsString -and $null -ne $InputObject.PSObject -and $null -ne $InputObject.PSObject.Properties[$targetProp]) {
                 try {
@@ -974,11 +1000,11 @@ function Find-ObjectByName {
                         $clone | Add-Member -NotePropertyName $p.Name -NotePropertyValue $p.Value
                     }
                     $origVal = [string]$clone.$targetProp
-                    $clone.$targetProp = Format-FindObjectHighlight -Text $origVal -Keywords $positiveKeywords -Comparison $comparison
+                    $clone.$targetProp = Format-FindObjectHighlight -Text $origVal -Keywords $positiveKeywords -Comparison $comparison -Mode $Mode
                     $outputObject = $clone
                 } catch {
                     try {
-                        $InputObject.$targetProp = Format-FindObjectHighlight -Text ([string]$InputObject.$targetProp) -Keywords $positiveKeywords -Comparison $comparison
+                        $InputObject.$targetProp = Format-FindObjectHighlight -Text ([string]$InputObject.$targetProp) -Keywords $positiveKeywords -Comparison $comparison -Mode $Mode
                     } catch {}
                 }
             }
@@ -994,6 +1020,21 @@ function Find-ObjectByName {
     }
 
     end {
+        if ($script:foStopwatch) { $script:foStopwatch.Stop() }
+        $elapsedMs = if ($script:foStopwatch) { [Math]::Round($script:foStopwatch.Elapsed.TotalMilliseconds, 1) } else { 0 }
+
+        if ($Summary) {
+            $hitPct = if ($script:foProcessed -gt 0) { [int][Math]::Round(($script:foEmitted / $script:foProcessed) * 100) } else { 0 }
+            $filled = [Math]::Max(0, [Math]::Min(10, [int][Math]::Round($hitPct / 10)))
+            $bar = ('#' * $filled) + ('-' * (10 - $filled))
+            $barColor = if ($script:foEmitted -gt 0) { 'Green' } else { 'Yellow' }
+            $propLabel = if ($AsString) { 'ToString()' } else { $Property }
+            Write-Host "`n  +----------------------------------------------------------------------+" -ForegroundColor DarkCyan
+            Write-Host "  | FindObject Match Telemetry   [$bar] $script:foEmitted / $script:foProcessed matched ($hitPct%)" -ForegroundColor $barColor
+            Write-Host "  | Mode: $Mode | Property: $propLabel | Clauses: $clauseCount | Elapsed: ${elapsedMs}ms" -ForegroundColor Cyan
+            Write-Host "  +----------------------------------------------------------------------+" -ForegroundColor DarkCyan
+        }
+
         if ($Quiet) {
             Write-Output ($script:foMatchCount -gt 0)
             return
@@ -1002,7 +1043,7 @@ function Find-ObjectByName {
             Write-Output ($script:foMatchCount - $script:foSkipped)
             return
         }
-        Write-Verbose "FindObject: processed=$script:foProcessed matched=$script:foMatchCount emitted=$script:foEmitted"
+        Write-Verbose "FindObject: processed=$script:foProcessed matched=$script:foMatchCount emitted=$script:foEmitted elapsed=${elapsedMs}ms"
     }
 
 }
