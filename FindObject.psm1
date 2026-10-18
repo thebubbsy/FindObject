@@ -960,8 +960,10 @@ function Find-ObjectByName {
         $script:foProcessed = 0
         $script:foSkipped = 0
         $script:foDone = $false
-        $script:foCopiedValues = if ($CopyMatches) { [System.Collections.Generic.List[string]]::new() } else { $null }
-        $script:foSampleValues = if ($Summary) { [System.Collections.Generic.List[string]]::new() } else { $null }
+        $script:foCopiedValues = $null
+        if ($CopyMatches) { $script:foCopiedValues = [System.Collections.Generic.List[string]]::new() }
+        $script:foSampleValues = $null
+        if ($Summary) { $script:foSampleValues = [System.Collections.Generic.List[string]]::new() }
 
         Write-Verbose "FindObject: Mode=$Mode Property=$Property CaseSensitive=$CaseSensitive Clauses=$clauseCount Invert=$Invert"
     }
