@@ -900,6 +900,9 @@ function Find-ObjectByName {
 
         [switch]$CopyMatches,
 
+        [Alias('NotMatch', 'v')]
+        [switch]$Invert,
+
         [Parameter(ParameterSetName = 'Default')]
         [ValidateRange(1, [int]::MaxValue)]
         [int]$First,
@@ -958,8 +961,9 @@ function Find-ObjectByName {
         $script:foSkipped = 0
         $script:foDone = $false
         $script:foCopiedValues = if ($CopyMatches) { [System.Collections.Generic.List[string]]::new() } else { $null }
+        $script:foSampleValues = if ($Summary) { [System.Collections.Generic.List[string]]::new() } else { $null }
 
-        Write-Verbose "FindObject: Mode=$Mode Property=$Property CaseSensitive=$CaseSensitive Clauses=$clauseCount"
+        Write-Verbose "FindObject: Mode=$Mode Property=$Property CaseSensitive=$CaseSensitive Clauses=$clauseCount Invert=$Invert"
     }
 
     process {
@@ -973,6 +977,7 @@ function Find-ObjectByName {
 
         # --- Evaluate AST against candidate values ---
         $result = Test-FindObjectAstValues -Node $ast -Values $values -Mode $Mode -Comparison $comparison
+        if ($Invert) { $result = -not $result }
         if (-not $result) { return }
 
         $script:foMatchCount++
@@ -996,10 +1001,14 @@ function Find-ObjectByName {
             $valToCopy = if ($values.Count -gt 0) { [string]$values[0] } else { [string]$InputObject }
             $script:foCopiedValues.Add($valToCopy)
         }
+        if ($Summary -and $null -ne $script:foSampleValues -and $script:foSampleValues.Count -lt 3) {
+            $sampleVal = if ($values.Count -gt 0) { [string]$values[0] } else { [string]$InputObject }
+            if (-not [string]::IsNullOrWhiteSpace($sampleVal)) { $script:foSampleValues.Add($sampleVal) }
+        }
 
         # -Highlight: in-band ANSI formatting emitted cleanly to pipeline stream
         $outputObject = $InputObject
-        if ($Highlight -and $Mode -ne 'Fuzzy') {
+        if ($Highlight -and $Mode -ne 'Fuzzy' -and -not $Invert) {
             $targetProp = if ([string]::IsNullOrEmpty($Property) -or $Property -eq '*') { 'Name' } else { $Property }
             if (-not $AsString -and $null -ne $InputObject.PSObject -and $null -ne $InputObject.PSObject.Properties[$targetProp]) {
                 try {
@@ -1045,9 +1054,15 @@ function Find-ObjectByName {
             $bar = ('#' * $filled) + ('-' * (10 - $filled))
             $barColor = if ($script:foEmitted -gt 0) { 'Green' } else { 'Yellow' }
             $propLabel = if ($AsString) { 'ToString()' } else { $Property }
+            $invBadge = if ($Invert) { ' [INVERTED]' } else { '' }
             Write-Host "`n  +----------------------------------------------------------------------+" -ForegroundColor DarkCyan
-            Write-Host "  | FindObject Match Telemetry   [$bar] $script:foEmitted / $script:foProcessed matched ($hitPct%)" -ForegroundColor $barColor
+            Write-Host "  | FindObject Match Telemetry$invBadge   [$bar] $script:foEmitted / $script:foProcessed matched ($hitPct%)" -ForegroundColor $barColor
             Write-Host "  | Mode: $Mode | Property: $propLabel | Clauses: $clauseCount | ${elapsedMs}ms ($ratePerSec objs/s)" -ForegroundColor Cyan
+            if ($null -ne $script:foSampleValues -and $script:foSampleValues.Count -gt 0) {
+                $sampleStr = ($script:foSampleValues -join ', ')
+                if ($sampleStr.Length -gt 58) { $sampleStr = $sampleStr.Substring(0, 55) + '...' }
+                Write-Host "  | Sample: $sampleStr" -ForegroundColor Gray
+            }
             Write-Host "  +----------------------------------------------------------------------+" -ForegroundColor DarkCyan
         }
 
