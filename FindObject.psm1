@@ -900,6 +900,9 @@ function Find-ObjectByName {
 
         [switch]$CopyMatches,
 
+        [Alias('CopyMd')]
+        [switch]$CopyMarkdown,
+
         [Alias('NotMatch', 'v')]
         [switch]$Invert,
 
@@ -971,6 +974,8 @@ function Find-ObjectByName {
         }
         $script:foCopiedValues = $null
         if ($CopyMatches) { $script:foCopiedValues = [System.Collections.Generic.List[string]]::new() }
+        $script:foMarkdownRows = $null
+        if ($CopyMarkdown) { $script:foMarkdownRows = [System.Collections.Generic.List[string]]::new() }
         $script:foSampleValues = $null
         if ($Summary) { $script:foSampleValues = [System.Collections.Generic.List[string]]::new() }
 
@@ -1020,6 +1025,14 @@ function Find-ObjectByName {
             $valToCopy = if ($values.Count -gt 0) { [string]$values[0] } else { [string]$InputObject }
             $script:foCopiedValues.Add($valToCopy)
         }
+        if ($CopyMarkdown -and $null -ne $script:foMarkdownRows -and $script:foMarkdownRows.Count -lt 500) {
+            $valCell = if ($values.Count -gt 0) { [string]$values[0] } else { [string]$InputObject }
+            $valCell = ($valCell -replace '\|', '\|' -replace '\r?\n', ' ').Trim()
+            $propCell = if ($AsString) { 'ToString()' } else { $Property }
+            $typeCell = if ($null -ne $InputObject) { $InputObject.GetType().Name } else { 'Object' }
+            $rowIdx = $script:foMarkdownRows.Count + 1
+            $script:foMarkdownRows.Add("| $rowIdx | ``$propCell`` | $valCell | ``$typeCell`` |")
+        }
         if ($Summary -and $null -ne $script:foSampleValues -and $script:foSampleValues.Count -lt 3) {
             $sampleVal = if ($values.Count -gt 0) { [string]$values[0] } else { [string]$InputObject }
             if (-not [string]::IsNullOrWhiteSpace($sampleVal)) { $script:foSampleValues.Add($sampleVal) }
@@ -1067,6 +1080,17 @@ function Find-ObjectByName {
             } catch {}
         }
 
+        if ($CopyMarkdown -and $null -ne $script:foMarkdownRows -and $script:foMarkdownRows.Count -gt 0) {
+            try {
+                $mdLines = @(
+                    "| # | Property | Matched Value | Type |",
+                    "| :--- | :--- | :--- | :--- |"
+                ) + $script:foMarkdownRows
+                Set-Clipboard -Value ($mdLines -join [Environment]::NewLine) -ErrorAction Stop
+                Write-Host "  [CLIPBOARD] Copied $($script:foMarkdownRows.Count) matched object(s) as Markdown table to clipboard." -ForegroundColor Green
+            } catch {}
+        }
+
         if ($Summary) {
             $hitPct = if ($script:foProcessed -gt 0) { [int][Math]::Round(($script:foEmitted / $script:foProcessed) * 100) } else { 0 }
             $filled = [Math]::Max(0, [Math]::Min(10, [int][Math]::Round($hitPct / 10)))
@@ -1075,8 +1099,9 @@ function Find-ObjectByName {
             $propLabel = if ($AsString) { 'ToString()' } else { $Property }
             $invBadge = if ($Invert) { ' [INVERTED]' } else { '' }
             $uniqBadge = if ($Unique) { " [UNIQUE: -$script:foDuplicatesFiltered dupes]" } else { '' }
+            $mdBadge = if ($CopyMarkdown) { ' [MD COPIED]' } else { '' }
             Write-Host "`n  +----------------------------------------------------------------------+" -ForegroundColor DarkCyan
-            Write-Host "  | FindObject Match Telemetry$invBadge$uniqBadge   [$bar] $script:foEmitted / $script:foProcessed matched ($hitPct%)" -ForegroundColor $barColor
+            Write-Host "  | FindObject Match Telemetry$invBadge$uniqBadge$mdBadge   [$bar] $script:foEmitted / $script:foProcessed matched ($hitPct%)" -ForegroundColor $barColor
             Write-Host "  | Mode: $Mode | Property: $propLabel | Clauses: $clauseCount | ${elapsedMs}ms ($ratePerSec objs/s)" -ForegroundColor Cyan
             if ($null -ne $script:foSampleValues -and $script:foSampleValues.Count -gt 0) {
                 $sampleStr = ($script:foSampleValues -join ', ')
