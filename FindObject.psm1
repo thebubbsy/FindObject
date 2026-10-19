@@ -903,6 +903,10 @@ function Find-ObjectByName {
         [Alias('CopyMd')]
         [switch]$CopyMarkdown,
 
+        [switch]$CopyCsv,
+
+        [switch]$CopyJson,
+
         [Alias('NotMatch', 'v')]
         [switch]$Invert,
 
@@ -976,6 +980,10 @@ function Find-ObjectByName {
         if ($CopyMatches) { $script:foCopiedValues = [System.Collections.Generic.List[string]]::new() }
         $script:foMarkdownRows = $null
         if ($CopyMarkdown) { $script:foMarkdownRows = [System.Collections.Generic.List[string]]::new() }
+        $script:foCsvRows = $null
+        if ($CopyCsv) { $script:foCsvRows = [System.Collections.Generic.List[string]]::new() }
+        $script:foJsonItems = $null
+        if ($CopyJson) { $script:foJsonItems = [System.Collections.Generic.List[object]]::new() }
         $script:foSampleValues = $null
         if ($Summary) { $script:foSampleValues = [System.Collections.Generic.List[string]]::new() }
 
@@ -1032,6 +1040,27 @@ function Find-ObjectByName {
             $typeCell = if ($null -ne $InputObject) { $InputObject.GetType().Name } else { 'Object' }
             $rowIdx = $script:foMarkdownRows.Count + 1
             $script:foMarkdownRows.Add("| $rowIdx | ``$propCell`` | $valCell | ``$typeCell`` |")
+        }
+        if ($CopyCsv -and $null -ne $script:foCsvRows -and $script:foCsvRows.Count -lt 500) {
+            $valCell = if ($values.Count -gt 0) { [string]$values[0] } else { [string]$InputObject }
+            $safeVal = ($valCell -replace '\r?\n', ' ').Replace('"', '""').Trim()
+            $propCell = if ($AsString) { 'ToString()' } else { $Property }
+            $safeProp = ([string]$propCell).Replace('"', '""')
+            $typeCell = if ($null -ne $InputObject) { $InputObject.GetType().Name } else { 'Object' }
+            $rowIdx = $script:foCsvRows.Count + 1
+            $script:foCsvRows.Add("$rowIdx,`"$safeProp`",`"$safeVal`",`"$typeCell`"")
+        }
+        if ($CopyJson -and $null -ne $script:foJsonItems -and $script:foJsonItems.Count -lt 500) {
+            $valCell = if ($values.Count -gt 0) { [string]$values[0] } else { [string]$InputObject }
+            $propCell = if ($AsString) { 'ToString()' } else { $Property }
+            $typeCell = if ($null -ne $InputObject) { $InputObject.GetType().Name } else { 'Object' }
+            $rowIdx = $script:foJsonItems.Count + 1
+            $script:foJsonItems.Add([PSCustomObject]@{
+                Index        = $rowIdx
+                Property     = $propCell
+                MatchedValue = $valCell
+                Type         = $typeCell
+            })
         }
         if ($Summary -and $null -ne $script:foSampleValues -and $script:foSampleValues.Count -lt 3) {
             $sampleVal = if ($values.Count -gt 0) { [string]$values[0] } else { [string]$InputObject }
@@ -1091,6 +1120,22 @@ function Find-ObjectByName {
             } catch {}
         }
 
+        if ($CopyCsv -and $null -ne $script:foCsvRows -and $script:foCsvRows.Count -gt 0) {
+            try {
+                $csvLines = @('Index,Property,MatchedValue,Type') + $script:foCsvRows
+                Set-Clipboard -Value ($csvLines -join [Environment]::NewLine) -ErrorAction Stop
+                Write-Host "  [CLIPBOARD] Copied $($script:foCsvRows.Count) matched object(s) as CSV to clipboard." -ForegroundColor Green
+            } catch {}
+        }
+
+        if ($CopyJson -and $null -ne $script:foJsonItems -and $script:foJsonItems.Count -gt 0) {
+            try {
+                $jsonText = $script:foJsonItems | ConvertTo-Json -Depth 4
+                Set-Clipboard -Value $jsonText -ErrorAction Stop
+                Write-Host "  [CLIPBOARD] Copied $($script:foJsonItems.Count) matched object(s) as JSON to clipboard." -ForegroundColor Green
+            } catch {}
+        }
+
         if ($Summary) {
             $hitPct = if ($script:foProcessed -gt 0) { [int][Math]::Round(($script:foEmitted / $script:foProcessed) * 100) } else { 0 }
             $filled = [Math]::Max(0, [Math]::Min(10, [int][Math]::Round($hitPct / 10)))
@@ -1100,8 +1145,10 @@ function Find-ObjectByName {
             $invBadge = if ($Invert) { ' [INVERTED]' } else { '' }
             $uniqBadge = if ($Unique) { " [UNIQUE: -$script:foDuplicatesFiltered dupes]" } else { '' }
             $mdBadge = if ($CopyMarkdown) { ' [MD COPIED]' } else { '' }
+            $csvBadge = if ($CopyCsv) { ' [CSV COPIED]' } else { '' }
+            $jsonBadge = if ($CopyJson) { ' [JSON COPIED]' } else { '' }
             Write-Host "`n  +----------------------------------------------------------------------+" -ForegroundColor DarkCyan
-            Write-Host "  | FindObject Match Telemetry$invBadge$uniqBadge$mdBadge   [$bar] $script:foEmitted / $script:foProcessed matched ($hitPct%)" -ForegroundColor $barColor
+            Write-Host "  | FindObject Match Telemetry$invBadge$uniqBadge$mdBadge$csvBadge$jsonBadge   [$bar] $script:foEmitted / $script:foProcessed matched ($hitPct%)" -ForegroundColor $barColor
             Write-Host "  | Mode: $Mode | Property: $propLabel | Clauses: $clauseCount | ${elapsedMs}ms ($ratePerSec objs/s)" -ForegroundColor Cyan
             if ($null -ne $script:foSampleValues -and $script:foSampleValues.Count -gt 0) {
                 $sampleStr = ($script:foSampleValues -join ', ')
