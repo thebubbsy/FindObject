@@ -903,6 +903,9 @@ function Find-ObjectByName {
         [Alias('NotMatch', 'v')]
         [switch]$Invert,
 
+        [Alias('u')]
+        [switch]$Unique,
+
         [Parameter(ParameterSetName = 'Default')]
         [ValidateRange(1, [int]::MaxValue)]
         [int]$First,
@@ -959,13 +962,19 @@ function Find-ObjectByName {
         $script:foEmitted = 0
         $script:foProcessed = 0
         $script:foSkipped = 0
+        $script:foDuplicatesFiltered = 0
         $script:foDone = $false
+        $script:foSeenSet = $null
+        if ($Unique) {
+            $strComparer = if ($CaseSensitive) { [System.StringComparer]::Ordinal } else { [System.StringComparer]::OrdinalIgnoreCase }
+            $script:foSeenSet = [System.Collections.Generic.HashSet[string]]::new($strComparer)
+        }
         $script:foCopiedValues = $null
         if ($CopyMatches) { $script:foCopiedValues = [System.Collections.Generic.List[string]]::new() }
         $script:foSampleValues = $null
         if ($Summary) { $script:foSampleValues = [System.Collections.Generic.List[string]]::new() }
 
-        Write-Verbose "FindObject: Mode=$Mode Property=$Property CaseSensitive=$CaseSensitive Clauses=$clauseCount Invert=$Invert"
+        Write-Verbose "FindObject: Mode=$Mode Property=$Property CaseSensitive=$CaseSensitive Clauses=$clauseCount Invert=$Invert Unique=$Unique"
     }
 
     process {
@@ -981,6 +990,14 @@ function Find-ObjectByName {
         $result = Test-FindObjectAstValues -Node $ast -Values $values -Mode $Mode -Comparison $comparison
         if ($Invert) { $result = -not $result }
         if (-not $result) { return }
+
+        if ($Unique -and $null -ne $script:foSeenSet) {
+            $dedupKey = if ($values.Count -gt 0) { ($values -join '|') } else { [string]$InputObject }
+            if (-not $script:foSeenSet.Add($dedupKey)) {
+                $script:foDuplicatesFiltered++
+                return
+            }
+        }
 
         $script:foMatchCount++
 
@@ -1057,8 +1074,9 @@ function Find-ObjectByName {
             $barColor = if ($script:foEmitted -gt 0) { 'Green' } else { 'Yellow' }
             $propLabel = if ($AsString) { 'ToString()' } else { $Property }
             $invBadge = if ($Invert) { ' [INVERTED]' } else { '' }
+            $uniqBadge = if ($Unique) { " [UNIQUE: -$script:foDuplicatesFiltered dupes]" } else { '' }
             Write-Host "`n  +----------------------------------------------------------------------+" -ForegroundColor DarkCyan
-            Write-Host "  | FindObject Match Telemetry$invBadge   [$bar] $script:foEmitted / $script:foProcessed matched ($hitPct%)" -ForegroundColor $barColor
+            Write-Host "  | FindObject Match Telemetry$invBadge$uniqBadge   [$bar] $script:foEmitted / $script:foProcessed matched ($hitPct%)" -ForegroundColor $barColor
             Write-Host "  | Mode: $Mode | Property: $propLabel | Clauses: $clauseCount | ${elapsedMs}ms ($ratePerSec objs/s)" -ForegroundColor Cyan
             if ($null -ne $script:foSampleValues -and $script:foSampleValues.Count -gt 0) {
                 $sampleStr = ($script:foSampleValues -join ', ')
