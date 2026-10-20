@@ -909,6 +909,9 @@ function Find-ObjectByName {
 
         [switch]$CopyJson,
 
+        [Alias('CopyTypes')]
+        [switch]$CopyTypeSummary,
+
         [Alias('NotMatch', 'v')]
         [switch]$Invert,
 
@@ -988,6 +991,10 @@ function Find-ObjectByName {
         if ($CopyTsv) { $script:foTsvRows = [System.Collections.Generic.List[string]]::new() }
         $script:foJsonItems = $null
         if ($CopyJson) { $script:foJsonItems = [System.Collections.Generic.List[object]]::new() }
+        $script:foTypeCounts = $null
+        if ($Summary -or $CopyTypeSummary) {
+            $script:foTypeCounts = [System.Collections.Generic.Dictionary[string, int]]::new([System.StringComparer]::OrdinalIgnoreCase)
+        }
         $script:foSampleValues = $null
         if ($Summary) { $script:foSampleValues = [System.Collections.Generic.List[string]]::new() }
 
@@ -1032,6 +1039,15 @@ function Find-ObjectByName {
 
         # -Count: just tally
         if ($Count) { return }
+
+        if ($null -ne $script:foTypeCounts) {
+            $tName = if ($null -ne $InputObject) { $InputObject.GetType().Name } else { 'Object' }
+            if ($script:foTypeCounts.ContainsKey($tName)) {
+                $script:foTypeCounts[$tName] = $script:foTypeCounts[$tName] + 1
+            } else {
+                $script:foTypeCounts[$tName] = 1
+            }
+        }
 
         if ($CopyMatches -and $null -ne $script:foCopiedValues) {
             $valToCopy = if ($values.Count -gt 0) { [string]$values[0] } else { [string]$InputObject }
@@ -1157,6 +1173,25 @@ function Find-ObjectByName {
             } catch {}
         }
 
+        if ($CopyTypeSummary -and $null -ne $script:foTypeCounts -and $script:foTypeCounts.Count -gt 0) {
+            try {
+                $typeLines = @(
+                    "### FindObject Matched .NET Type Breakdown ($script:foEmitted Matched / $script:foProcessed Scanned)",
+                    "",
+                    "| # | .NET Type | Matched Count | Share % |",
+                    "| :- | :--- | :---: | :---: |"
+                )
+                $tIdx = 0
+                foreach ($kv in ($script:foTypeCounts.GetEnumerator() | Sort-Object Value -Descending)) {
+                    $tIdx++
+                    $sharePct = if ($script:foEmitted -gt 0) { [Math]::Round(($kv.Value * 100.0) / $script:foEmitted, 1) } else { 0 }
+                    $typeLines += "| $tIdx | ``$($kv.Key)`` | $($kv.Value) | ${sharePct}% |"
+                }
+                Set-Clipboard -Value ($typeLines -join "`r`n") -ErrorAction Stop
+                Write-Host "  [CLIPBOARD] Copied $($script:foTypeCounts.Count) .NET type breakdown row(s) as Markdown table to clipboard." -ForegroundColor Green
+            } catch {}
+        }
+
         if ($Summary) {
             $hitPct = if ($script:foProcessed -gt 0) { [int][Math]::Round(($script:foEmitted / $script:foProcessed) * 100) } else { 0 }
             $filled = [Math]::Max(0, [Math]::Min(10, [int][Math]::Round($hitPct / 10)))
@@ -1169,9 +1204,14 @@ function Find-ObjectByName {
             $csvBadge = if ($CopyCsv) { ' [CSV COPIED]' } else { '' }
             $tsvBadge = if ($CopyTsv) { ' [TSV COPIED]' } else { '' }
             $jsonBadge = if ($CopyJson) { ' [JSON COPIED]' } else { '' }
+            $typesBadge = if ($CopyTypeSummary) { ' [TYPES COPIED]' } else { '' }
             Write-Host "`n  +----------------------------------------------------------------------+" -ForegroundColor DarkCyan
-            Write-Host "  | FindObject Match Telemetry$invBadge$uniqBadge$mdBadge$csvBadge$tsvBadge$jsonBadge   [$bar] $script:foEmitted / $script:foProcessed matched ($hitPct%)" -ForegroundColor $barColor
+            Write-Host "  | FindObject Match Telemetry$invBadge$uniqBadge$mdBadge$csvBadge$tsvBadge$jsonBadge$typesBadge   [$bar] $script:foEmitted / $script:foProcessed matched ($hitPct%)" -ForegroundColor $barColor
             Write-Host "  | Mode: $Mode | Property: $propLabel | Clauses: $clauseCount | ${elapsedMs}ms ($ratePerSec objs/s)" -ForegroundColor Cyan
+            if ($null -ne $script:foTypeCounts -and $script:foTypeCounts.Count -gt 0) {
+                $topTypes = @($script:foTypeCounts.GetEnumerator() | Sort-Object Value -Descending | Select-Object -First 4 | ForEach-Object { "$($_.Key) ($($_.Value))" }) -join ', '
+                Write-Host "  | Types : $topTypes" -ForegroundColor DarkCyan
+            }
             if ($null -ne $script:foSampleValues -and $script:foSampleValues.Count -gt 0) {
                 $sampleStr = ($script:foSampleValues -join ', ')
                 if ($sampleStr.Length -gt 58) { $sampleStr = $sampleStr.Substring(0, 55) + '...' }
