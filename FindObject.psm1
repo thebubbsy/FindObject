@@ -915,6 +915,9 @@ function Find-ObjectByName {
         [Alias('CopyTypesTsv')]
         [switch]$CopyTypeTsv,
 
+        [Alias('CopyTypesJson')]
+        [switch]$CopyTypeJson,
+
         [Alias('CopyReport', 'CopyStats')]
         [switch]$CopySummary,
 
@@ -923,6 +926,9 @@ function Find-ObjectByName {
 
         [Alias('CopyReportTsv', 'CopyStatsTsv')]
         [switch]$CopySummaryTsv,
+
+        [Alias('CopyReportCsv', 'CopyStatsCsv')]
+        [switch]$CopySummaryCsv,
 
         [Alias('NotMatch', 'v')]
         [switch]$Invert,
@@ -1004,11 +1010,11 @@ function Find-ObjectByName {
         $script:foJsonItems = $null
         if ($CopyJson) { $script:foJsonItems = [System.Collections.Generic.List[object]]::new() }
         $script:foTypeCounts = $null
-        if ($Summary -or $CopyTypeSummary -or $CopyTypeTsv -or $CopySummary -or $CopySummaryJson -or $CopySummaryTsv) {
+        if ($Summary -or $CopyTypeSummary -or $CopyTypeTsv -or $CopyTypeJson -or $CopySummary -or $CopySummaryJson -or $CopySummaryTsv -or $CopySummaryCsv) {
             $script:foTypeCounts = [System.Collections.Generic.Dictionary[string, int]]::new([System.StringComparer]::OrdinalIgnoreCase)
         }
         $script:foSampleValues = $null
-        if ($Summary -or $CopySummary -or $CopySummaryJson -or $CopySummaryTsv) { $script:foSampleValues = [System.Collections.Generic.List[string]]::new() }
+        if ($Summary -or $CopySummary -or $CopySummaryJson -or $CopySummaryTsv -or $CopySummaryCsv) { $script:foSampleValues = [System.Collections.Generic.List[string]]::new() }
 
         Write-Verbose "FindObject: Mode=$Mode Property=$Property CaseSensitive=$CaseSensitive Clauses=$clauseCount Invert=$Invert Unique=$Unique"
     }
@@ -1103,7 +1109,7 @@ function Find-ObjectByName {
                 Type         = $typeCell
             })
         }
-        if (($Summary -or $CopySummary -or $CopySummaryJson -or $CopySummaryTsv) -and $null -ne $script:foSampleValues -and $script:foSampleValues.Count -lt 3) {
+        if (($Summary -or $CopySummary -or $CopySummaryJson -or $CopySummaryTsv -or $CopySummaryCsv) -and $null -ne $script:foSampleValues -and $script:foSampleValues.Count -lt 3) {
             $sampleVal = if ($values.Count -gt 0) { [string]$values[0] } else { [string]$InputObject }
             if (-not [string]::IsNullOrWhiteSpace($sampleVal)) { $script:foSampleValues.Add($sampleVal) }
         }
@@ -1218,6 +1224,32 @@ function Find-ObjectByName {
             } catch {}
         }
 
+        if ($CopyTypeJson -and $null -ne $script:foTypeCounts -and $script:foTypeCounts.Count -gt 0) {
+            try {
+                $typeItems = @()
+                $tIdx = 0
+                foreach ($kv in ($script:foTypeCounts.GetEnumerator() | Sort-Object Value -Descending)) {
+                    $tIdx++
+                    $sharePct = if ($script:foEmitted -gt 0) { [Math]::Round(($kv.Value * 100.0) / $script:foEmitted, 1) } else { 0 }
+                    $typeItems += [PSCustomObject]@{
+                        Index        = $tIdx
+                        Type         = $kv.Key
+                        MatchedCount = $kv.Value
+                        SharePercent = $sharePct
+                    }
+                }
+                $typePayload = [PSCustomObject]@{
+                    GeneratedAt = (Get-Date).ToString('o')
+                    Matched     = $script:foEmitted
+                    Scanned     = $script:foProcessed
+                    TypeCount   = $script:foTypeCounts.Count
+                    Types       = $typeItems
+                }
+                Set-Clipboard -Value ($typePayload | ConvertTo-Json -Depth 5) -ErrorAction Stop
+                Write-Host "  [CLIPBOARD] Copied $($script:foTypeCounts.Count) .NET type breakdown row(s) as JSON to clipboard." -ForegroundColor Green
+            } catch {}
+        }
+
         if ($CopySummary) {
             try {
                 $hitPctReport = if ($script:foProcessed -gt 0) { [int][Math]::Round(($script:foEmitted / $script:foProcessed) * 100) } else { 0 }
@@ -1303,6 +1335,33 @@ function Find-ObjectByName {
             } catch {}
         }
 
+        if ($CopySummaryCsv) {
+            try {
+                $hitPctCsv = if ($script:foProcessed -gt 0) { [Math]::Round(($script:foEmitted * 100.0) / $script:foProcessed, 1) } else { 0 }
+                $propLabelCsv = if ($AsString) { 'ToString()' } else { $Property }
+                $topTypesCsv = if ($null -ne $script:foTypeCounts -and $script:foTypeCounts.Count -gt 0) {
+                    @($script:foTypeCounts.GetEnumerator() | Sort-Object Value -Descending | Select-Object -First 4 | ForEach-Object { "$($_.Key) ($($_.Value))" }) -join ', '
+                } else { 'N/A' }
+                $samplesCsv = if ($null -ne $script:foSampleValues -and $script:foSampleValues.Count -gt 0) {
+                    (($script:foSampleValues -join ', ') -replace '\r?\n', ' ').Replace('"', '""').Trim()
+                } else { 'None' }
+                $safePropCsv = ([string]$propLabelCsv).Replace('"', '""')
+                $safeTypesCsv = ([string]$topTypesCsv).Replace('"', '""')
+                $csvSumLines = @(
+                    "Metric,Value",
+                    "`"Matched / Scanned`",`"$script:foEmitted / $script:foProcessed (${hitPctCsv}%)`"",
+                    "`"Mode / Property`",`"$Mode / $safePropCsv`"",
+                    "`"Clauses / CaseSensitive`",`"$clauseCount / $CaseSensitive`"",
+                    "`"Invert / Unique`",`"$Invert / $Unique (-$script:foDuplicatesFiltered dupes)`"",
+                    "`"Elapsed / Throughput`",`"${elapsedMs}ms ($ratePerSec objs/s)`"",
+                    "`"Top .NET Types`",`"$safeTypesCsv`"",
+                    "`"Sample Matches`",`"$samplesCsv`""
+                )
+                Set-Clipboard -Value ($csvSumLines -join "`r`n") -ErrorAction Stop
+                Write-Host "  [CLIPBOARD] Copied FindObject match telemetry summary report (CSV) to clipboard." -ForegroundColor Green
+            } catch {}
+        }
+
         if ($Summary) {
             $hitPct = if ($script:foProcessed -gt 0) { [int][Math]::Round(($script:foEmitted / $script:foProcessed) * 100) } else { 0 }
             $filled = [Math]::Max(0, [Math]::Min(10, [int][Math]::Round($hitPct / 10)))
@@ -1317,11 +1376,13 @@ function Find-ObjectByName {
             $jsonBadge = if ($CopyJson) { ' [JSON COPIED]' } else { '' }
             $typesBadge = if ($CopyTypeSummary) { ' [TYPES COPIED]' } else { '' }
             $typesTsvBadge = if ($CopyTypeTsv) { ' [TYPES TSV COPIED]' } else { '' }
+            $typesJsonBadge = if ($CopyTypeJson) { ' [TYPES JSON COPIED]' } else { '' }
             $sumCopyBadge = if ($CopySummary) { ' [SUMMARY COPIED]' } else { '' }
             $sumJsonBadge = if ($CopySummaryJson) { ' [SUMMARY JSON COPIED]' } else { '' }
             $sumTsvBadge = if ($CopySummaryTsv) { ' [SUMMARY TSV COPIED]' } else { '' }
+            $sumCsvBadge = if ($CopySummaryCsv) { ' [SUMMARY CSV COPIED]' } else { '' }
             Write-Host "`n  +----------------------------------------------------------------------+" -ForegroundColor DarkCyan
-            Write-Host "  | FindObject Match Telemetry$invBadge$uniqBadge$mdBadge$csvBadge$tsvBadge$jsonBadge$typesBadge$typesTsvBadge$sumCopyBadge$sumJsonBadge$sumTsvBadge   [$bar] $script:foEmitted / $script:foProcessed matched ($hitPct%)" -ForegroundColor $barColor
+            Write-Host "  | FindObject Match Telemetry$invBadge$uniqBadge$mdBadge$csvBadge$tsvBadge$jsonBadge$typesBadge$typesTsvBadge$typesJsonBadge$sumCopyBadge$sumJsonBadge$sumTsvBadge$sumCsvBadge   [$bar] $script:foEmitted / $script:foProcessed matched ($hitPct%)" -ForegroundColor $barColor
             Write-Host "  | Mode: $Mode | Property: $propLabel | Clauses: $clauseCount | ${elapsedMs}ms ($ratePerSec objs/s)" -ForegroundColor Cyan
             if ($null -ne $script:foTypeCounts -and $script:foTypeCounts.Count -gt 0) {
                 $topTypes = @($script:foTypeCounts.GetEnumerator() | Sort-Object Value -Descending | Select-Object -First 4 | ForEach-Object { "$($_.Key) ($($_.Value))" }) -join ', '
