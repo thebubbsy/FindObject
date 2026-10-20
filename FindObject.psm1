@@ -918,6 +918,12 @@ function Find-ObjectByName {
         [Alias('CopyReport', 'CopyStats')]
         [switch]$CopySummary,
 
+        [Alias('CopyReportJson', 'CopyStatsJson')]
+        [switch]$CopySummaryJson,
+
+        [Alias('CopyReportTsv', 'CopyStatsTsv')]
+        [switch]$CopySummaryTsv,
+
         [Alias('NotMatch', 'v')]
         [switch]$Invert,
 
@@ -998,11 +1004,11 @@ function Find-ObjectByName {
         $script:foJsonItems = $null
         if ($CopyJson) { $script:foJsonItems = [System.Collections.Generic.List[object]]::new() }
         $script:foTypeCounts = $null
-        if ($Summary -or $CopyTypeSummary -or $CopyTypeTsv -or $CopySummary) {
+        if ($Summary -or $CopyTypeSummary -or $CopyTypeTsv -or $CopySummary -or $CopySummaryJson -or $CopySummaryTsv) {
             $script:foTypeCounts = [System.Collections.Generic.Dictionary[string, int]]::new([System.StringComparer]::OrdinalIgnoreCase)
         }
         $script:foSampleValues = $null
-        if ($Summary -or $CopySummary) { $script:foSampleValues = [System.Collections.Generic.List[string]]::new() }
+        if ($Summary -or $CopySummary -or $CopySummaryJson -or $CopySummaryTsv) { $script:foSampleValues = [System.Collections.Generic.List[string]]::new() }
 
         Write-Verbose "FindObject: Mode=$Mode Property=$Property CaseSensitive=$CaseSensitive Clauses=$clauseCount Invert=$Invert Unique=$Unique"
     }
@@ -1097,7 +1103,7 @@ function Find-ObjectByName {
                 Type         = $typeCell
             })
         }
-        if (($Summary -or $CopySummary) -and $null -ne $script:foSampleValues -and $script:foSampleValues.Count -lt 3) {
+        if (($Summary -or $CopySummary -or $CopySummaryJson -or $CopySummaryTsv) -and $null -ne $script:foSampleValues -and $script:foSampleValues.Count -lt 3) {
             $sampleVal = if ($values.Count -gt 0) { [string]$values[0] } else { [string]$InputObject }
             if (-not [string]::IsNullOrWhiteSpace($sampleVal)) { $script:foSampleValues.Add($sampleVal) }
         }
@@ -1240,6 +1246,63 @@ function Find-ObjectByName {
             } catch {}
         }
 
+        if ($CopySummaryJson) {
+            try {
+                $hitPctJson = if ($script:foProcessed -gt 0) { [Math]::Round(($script:foEmitted * 100.0) / $script:foProcessed, 1) } else { 0 }
+                $propLabelJson = if ($AsString) { 'ToString()' } else { $Property }
+                $typeArr = @()
+                if ($null -ne $script:foTypeCounts) {
+                    foreach ($kv in ($script:foTypeCounts.GetEnumerator() | Sort-Object Value -Descending)) {
+                        $typeArr += [PSCustomObject]@{ Type = $kv.Key; Count = $kv.Value }
+                    }
+                }
+                $summaryObj = [PSCustomObject]@{
+                    GeneratedAt        = (Get-Date).ToString('o')
+                    Matched            = $script:foEmitted
+                    Scanned            = $script:foProcessed
+                    HitRatePercent     = $hitPctJson
+                    Mode               = [string]$Mode
+                    Property           = [string]$propLabelJson
+                    Clauses            = $clauseCount
+                    CaseSensitive      = [bool]$CaseSensitive
+                    Invert             = [bool]$Invert
+                    Unique             = [bool]$Unique
+                    DuplicatesFiltered = $script:foDuplicatesFiltered
+                    ElapsedMs          = $elapsedMs
+                    ThroughputPerSec   = $ratePerSec
+                    TypeBreakdown      = $typeArr
+                    SampleMatches      = if ($null -ne $script:foSampleValues) { @($script:foSampleValues) } else { @() }
+                }
+                Set-Clipboard -Value ($summaryObj | ConvertTo-Json -Depth 5) -ErrorAction Stop
+                Write-Host "  [CLIPBOARD] Copied FindObject match telemetry summary report (JSON) to clipboard." -ForegroundColor Green
+            } catch {}
+        }
+
+        if ($CopySummaryTsv) {
+            try {
+                $hitPctTsv = if ($script:foProcessed -gt 0) { [Math]::Round(($script:foEmitted * 100.0) / $script:foProcessed, 1) } else { 0 }
+                $propLabelTsv = if ($AsString) { 'ToString()' } else { $Property }
+                $topTypesTsv = if ($null -ne $script:foTypeCounts -and $script:foTypeCounts.Count -gt 0) {
+                    @($script:foTypeCounts.GetEnumerator() | Sort-Object Value -Descending | Select-Object -First 4 | ForEach-Object { "$($_.Key) ($($_.Value))" }) -join ', '
+                } else { 'N/A' }
+                $samplesTsv = if ($null -ne $script:foSampleValues -and $script:foSampleValues.Count -gt 0) {
+                    (($script:foSampleValues -join ', ') -replace "[\t\r\n]+", ' ').Trim()
+                } else { 'None' }
+                $tsvSumLines = @(
+                    "Metric`tValue",
+                    "Matched / Scanned`t$script:foEmitted / $script:foProcessed (${hitPctTsv}%)",
+                    "Mode / Property`t$Mode / $propLabelTsv",
+                    "Clauses / CaseSensitive`t$clauseCount / $CaseSensitive",
+                    "Invert / Unique`t$Invert / $Unique (-$script:foDuplicatesFiltered dupes)",
+                    "Elapsed / Throughput`t${elapsedMs}ms ($ratePerSec objs/s)",
+                    "Top .NET Types`t$topTypesTsv",
+                    "Sample Matches`t$samplesTsv"
+                )
+                Set-Clipboard -Value ($tsvSumLines -join "`r`n") -ErrorAction Stop
+                Write-Host "  [CLIPBOARD] Copied FindObject match telemetry summary report (TSV) to clipboard." -ForegroundColor Green
+            } catch {}
+        }
+
         if ($Summary) {
             $hitPct = if ($script:foProcessed -gt 0) { [int][Math]::Round(($script:foEmitted / $script:foProcessed) * 100) } else { 0 }
             $filled = [Math]::Max(0, [Math]::Min(10, [int][Math]::Round($hitPct / 10)))
@@ -1255,8 +1318,10 @@ function Find-ObjectByName {
             $typesBadge = if ($CopyTypeSummary) { ' [TYPES COPIED]' } else { '' }
             $typesTsvBadge = if ($CopyTypeTsv) { ' [TYPES TSV COPIED]' } else { '' }
             $sumCopyBadge = if ($CopySummary) { ' [SUMMARY COPIED]' } else { '' }
+            $sumJsonBadge = if ($CopySummaryJson) { ' [SUMMARY JSON COPIED]' } else { '' }
+            $sumTsvBadge = if ($CopySummaryTsv) { ' [SUMMARY TSV COPIED]' } else { '' }
             Write-Host "`n  +----------------------------------------------------------------------+" -ForegroundColor DarkCyan
-            Write-Host "  | FindObject Match Telemetry$invBadge$uniqBadge$mdBadge$csvBadge$tsvBadge$jsonBadge$typesBadge$typesTsvBadge$sumCopyBadge   [$bar] $script:foEmitted / $script:foProcessed matched ($hitPct%)" -ForegroundColor $barColor
+            Write-Host "  | FindObject Match Telemetry$invBadge$uniqBadge$mdBadge$csvBadge$tsvBadge$jsonBadge$typesBadge$typesTsvBadge$sumCopyBadge$sumJsonBadge$sumTsvBadge   [$bar] $script:foEmitted / $script:foProcessed matched ($hitPct%)" -ForegroundColor $barColor
             Write-Host "  | Mode: $Mode | Property: $propLabel | Clauses: $clauseCount | ${elapsedMs}ms ($ratePerSec objs/s)" -ForegroundColor Cyan
             if ($null -ne $script:foTypeCounts -and $script:foTypeCounts.Count -gt 0) {
                 $topTypes = @($script:foTypeCounts.GetEnumerator() | Sort-Object Value -Descending | Select-Object -First 4 | ForEach-Object { "$($_.Key) ($($_.Value))" }) -join ', '
