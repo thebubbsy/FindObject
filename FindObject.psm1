@@ -918,6 +918,9 @@ function Find-ObjectByName {
         [Alias('CopyTypesJson')]
         [switch]$CopyTypeJson,
 
+        [Alias('CopyTypesCsv')]
+        [switch]$CopyTypeCsv,
+
         [Alias('CopyReport', 'CopyStats')]
         [switch]$CopySummary,
 
@@ -1010,7 +1013,7 @@ function Find-ObjectByName {
         $script:foJsonItems = $null
         if ($CopyJson) { $script:foJsonItems = [System.Collections.Generic.List[object]]::new() }
         $script:foTypeCounts = $null
-        if ($Summary -or $CopyTypeSummary -or $CopyTypeTsv -or $CopyTypeJson -or $CopySummary -or $CopySummaryJson -or $CopySummaryTsv -or $CopySummaryCsv) {
+        if ($Summary -or $CopyTypeSummary -or $CopyTypeTsv -or $CopyTypeJson -or $CopyTypeCsv -or $CopySummary -or $CopySummaryJson -or $CopySummaryTsv -or $CopySummaryCsv) {
             $script:foTypeCounts = [System.Collections.Generic.Dictionary[string, int]]::new([System.StringComparer]::OrdinalIgnoreCase)
         }
         $script:foSampleValues = $null
@@ -1250,6 +1253,21 @@ function Find-ObjectByName {
             } catch {}
         }
 
+        if ($CopyTypeCsv -and $null -ne $script:foTypeCounts -and $script:foTypeCounts.Count -gt 0) {
+            try {
+                $typeCsvLines = @("Index,Type,MatchedCount,SharePercent")
+                $tIdx = 0
+                foreach ($kv in ($script:foTypeCounts.GetEnumerator() | Sort-Object Value -Descending)) {
+                    $tIdx++
+                    $sharePct = if ($script:foEmitted -gt 0) { [Math]::Round(($kv.Value * 100.0) / $script:foEmitted, 1) } else { 0 }
+                    $safeType = ([string]$kv.Key).Replace('"', '""')
+                    $typeCsvLines += "$tIdx,`"$safeType`",$($kv.Value),`"$sharePct%`""
+                }
+                Set-Clipboard -Value ($typeCsvLines -join "`r`n") -ErrorAction Stop
+                Write-Host "  [CLIPBOARD] Copied $($script:foTypeCounts.Count) .NET type breakdown row(s) as CSV to clipboard." -ForegroundColor Green
+            } catch {}
+        }
+
         if ($CopySummary) {
             try {
                 $hitPctReport = if ($script:foProcessed -gt 0) { [int][Math]::Round(($script:foEmitted / $script:foProcessed) * 100) } else { 0 }
@@ -1377,12 +1395,13 @@ function Find-ObjectByName {
             $typesBadge = if ($CopyTypeSummary) { ' [TYPES COPIED]' } else { '' }
             $typesTsvBadge = if ($CopyTypeTsv) { ' [TYPES TSV COPIED]' } else { '' }
             $typesJsonBadge = if ($CopyTypeJson) { ' [TYPES JSON COPIED]' } else { '' }
+            $typesCsvBadge = if ($CopyTypeCsv) { ' [TYPES CSV COPIED]' } else { '' }
             $sumCopyBadge = if ($CopySummary) { ' [SUMMARY COPIED]' } else { '' }
             $sumJsonBadge = if ($CopySummaryJson) { ' [SUMMARY JSON COPIED]' } else { '' }
             $sumTsvBadge = if ($CopySummaryTsv) { ' [SUMMARY TSV COPIED]' } else { '' }
             $sumCsvBadge = if ($CopySummaryCsv) { ' [SUMMARY CSV COPIED]' } else { '' }
             Write-Host "`n  +----------------------------------------------------------------------+" -ForegroundColor DarkCyan
-            Write-Host "  | FindObject Match Telemetry$invBadge$uniqBadge$mdBadge$csvBadge$tsvBadge$jsonBadge$typesBadge$typesTsvBadge$typesJsonBadge$sumCopyBadge$sumJsonBadge$sumTsvBadge$sumCsvBadge   [$bar] $script:foEmitted / $script:foProcessed matched ($hitPct%)" -ForegroundColor $barColor
+            Write-Host "  | FindObject Match Telemetry$invBadge$uniqBadge$mdBadge$csvBadge$tsvBadge$jsonBadge$typesBadge$typesTsvBadge$typesJsonBadge$typesCsvBadge$sumCopyBadge$sumJsonBadge$sumTsvBadge$sumCsvBadge   [$bar] $script:foEmitted / $script:foProcessed matched ($hitPct%)" -ForegroundColor $barColor
             Write-Host "  | Mode: $Mode | Property: $propLabel | Clauses: $clauseCount | ${elapsedMs}ms ($ratePerSec objs/s)" -ForegroundColor Cyan
             if ($null -ne $script:foTypeCounts -and $script:foTypeCounts.Count -gt 0) {
                 $topTypes = @($script:foTypeCounts.GetEnumerator() | Sort-Object Value -Descending | Select-Object -First 4 | ForEach-Object { "$($_.Key) ($($_.Value))" }) -join ', '
