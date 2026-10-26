@@ -921,6 +921,9 @@ function Find-ObjectByName {
         [Alias('CopyTypesCsv')]
         [switch]$CopyTypeCsv,
 
+        [Alias('CopyTypesHtml')]
+        [switch]$CopyTypeHtml,
+
         [Alias('CopyReport', 'CopyStats')]
         [switch]$CopySummary,
 
@@ -932,6 +935,9 @@ function Find-ObjectByName {
 
         [Alias('CopyReportCsv', 'CopyStatsCsv')]
         [switch]$CopySummaryCsv,
+
+        [Alias('CopyReportHtml', 'CopyStatsHtml')]
+        [switch]$CopySummaryHtml,
 
         [Alias('NotMatch', 'v')]
         [switch]$Invert,
@@ -1013,11 +1019,11 @@ function Find-ObjectByName {
         $script:foJsonItems = $null
         if ($CopyJson) { $script:foJsonItems = [System.Collections.Generic.List[object]]::new() }
         $script:foTypeCounts = $null
-        if ($Summary -or $CopyTypeSummary -or $CopyTypeTsv -or $CopyTypeJson -or $CopyTypeCsv -or $CopySummary -or $CopySummaryJson -or $CopySummaryTsv -or $CopySummaryCsv) {
+        if ($Summary -or $CopyTypeSummary -or $CopyTypeTsv -or $CopyTypeJson -or $CopyTypeCsv -or $CopyTypeHtml -or $CopySummary -or $CopySummaryJson -or $CopySummaryTsv -or $CopySummaryCsv -or $CopySummaryHtml) {
             $script:foTypeCounts = [System.Collections.Generic.Dictionary[string, int]]::new([System.StringComparer]::OrdinalIgnoreCase)
         }
         $script:foSampleValues = $null
-        if ($Summary -or $CopySummary -or $CopySummaryJson -or $CopySummaryTsv -or $CopySummaryCsv) { $script:foSampleValues = [System.Collections.Generic.List[string]]::new() }
+        if ($Summary -or $CopySummary -or $CopySummaryJson -or $CopySummaryTsv -or $CopySummaryCsv -or $CopySummaryHtml) { $script:foSampleValues = [System.Collections.Generic.List[string]]::new() }
 
         Write-Verbose "FindObject: Mode=$Mode Property=$Property CaseSensitive=$CaseSensitive Clauses=$clauseCount Invert=$Invert Unique=$Unique"
     }
@@ -1268,6 +1274,36 @@ function Find-ObjectByName {
             } catch {}
         }
 
+        if ($CopyTypeHtml -and $null -ne $script:foTypeCounts -and $script:foTypeCounts.Count -gt 0) {
+            try {
+                $typeHtmlRows = @()
+                $tIdx = 0
+                foreach ($kv in ($script:foTypeCounts.GetEnumerator() | Sort-Object Value -Descending)) {
+                    $tIdx++
+                    $sharePct = if ($script:foEmitted -gt 0) { [Math]::Round(($kv.Value * 100.0) / $script:foEmitted, 1) } else { 0 }
+                    $safeType = ([string]$kv.Key) -replace '&', '&amp;' -replace '<', '&lt;' -replace '>', '&gt;'
+                    $typeHtmlRows += "    <tr style=`"border-bottom:1px solid #1e293b`"><td style=`"padding:5px 10px;text-align:center;color:#94a3b8`">$tIdx</td><td style=`"padding:5px 10px;font-family:Consolas,monospace;font-weight:600`">$safeType</td><td style=`"padding:5px 10px;text-align:right`">$($kv.Value)</td><td style=`"padding:5px 10px;text-align:right;color:#38bdf8`">$sharePct%</td></tr>"
+                }
+                $typeHtml = @"
+<table style="border-collapse:collapse;font-family:Segoe UI,Helvetica,Arial,sans-serif;font-size:12px;color:#f8fafc;background:#0f172a;border:1px solid #334155;border-radius:6px;overflow:hidden">
+  <thead>
+    <tr style="background:#1e293b;border-bottom:2px solid #475569">
+      <th style="padding:6px 10px;text-align:center;color:#94a3b8">#</th>
+      <th style="padding:6px 10px;text-align:left;color:#94a3b8">.NET Type</th>
+      <th style="padding:6px 10px;text-align:right;color:#94a3b8">Count</th>
+      <th style="padding:6px 10px;text-align:right;color:#94a3b8">Share %</th>
+    </tr>
+  </thead>
+  <tbody>
+$($typeHtmlRows -join "`r`n")
+  </tbody>
+</table>
+"@
+                Set-Clipboard -Value $typeHtml -ErrorAction Stop
+                Write-Host "  [CLIPBOARD] Copied $($script:foTypeCounts.Count) .NET type breakdown row(s) as HTML to clipboard." -ForegroundColor Green
+            } catch {}
+        }
+
         if ($CopySummary) {
             try {
                 $hitPctReport = if ($script:foProcessed -gt 0) { [int][Math]::Round(($script:foEmitted / $script:foProcessed) * 100) } else { 0 }
@@ -1380,6 +1416,43 @@ function Find-ObjectByName {
             } catch {}
         }
 
+        if ($CopySummaryHtml) {
+            try {
+                $hitPctHtml = if ($script:foProcessed -gt 0) { [Math]::Round(($script:foEmitted * 100.0) / $script:foProcessed, 1) } else { 0 }
+                $propLabelHtml = if ($AsString) { 'ToString()' } else { $Property }
+                $topTypesHtml = if ($null -ne $script:foTypeCounts -and $script:foTypeCounts.Count -gt 0) {
+                    @($script:foTypeCounts.GetEnumerator() | Sort-Object Value -Descending | Select-Object -First 4 | ForEach-Object { "$($_.Key) ($($_.Value))" }) -join ', '
+                } else { 'N/A' }
+                $samplesHtml = if ($null -ne $script:foSampleValues -and $script:foSampleValues.Count -gt 0) {
+                    (($script:foSampleValues -join ', ') -replace '\r?\n', ' ').Trim()
+                } else { 'None' }
+                $safePropHtml = ($propLabelHtml -replace '&', '&amp;' -replace '<', '&lt;' -replace '>', '&gt;')
+                $safeTypesHtml = ($topTypesHtml -replace '&', '&amp;' -replace '<', '&lt;' -replace '>', '&gt;')
+                $safeSamplesHtml = ($samplesHtml -replace '&', '&amp;' -replace '<', '&lt;' -replace '>', '&gt;')
+                $sumHtml = @"
+<table style="border-collapse:collapse;font-family:Segoe UI,Helvetica,Arial,sans-serif;font-size:12px;color:#f8fafc;background:#0f172a;border:1px solid #334155;border-radius:6px;overflow:hidden">
+  <thead>
+    <tr style="background:#1e293b;border-bottom:2px solid #475569">
+      <th style="padding:6px 12px;text-align:left;color:#94a3b8">Metric</th>
+      <th style="padding:6px 12px;text-align:left;color:#94a3b8">Value</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr style="border-bottom:1px solid #1e293b"><td style="padding:5px 12px;font-weight:600;color:#94a3b8">Matched / Scanned</td><td style="padding:5px 12px;color:#34d399;font-weight:600">$script:foEmitted / $script:foProcessed (${hitPctHtml}%)</td></tr>
+    <tr style="border-bottom:1px solid #1e293b"><td style="padding:5px 12px;font-weight:600;color:#94a3b8">Mode / Property</td><td style="padding:5px 12px">$Mode / $safePropHtml</td></tr>
+    <tr style="border-bottom:1px solid #1e293b"><td style="padding:5px 12px;font-weight:600;color:#94a3b8">Clauses / CaseSensitive</td><td style="padding:5px 12px">$clauseCount / $CaseSensitive</td></tr>
+    <tr style="border-bottom:1px solid #1e293b"><td style="padding:5px 12px;font-weight:600;color:#94a3b8">Invert / Unique</td><td style="padding:5px 12px">$Invert / $Unique (-$script:foDuplicatesFiltered dupes)</td></tr>
+    <tr style="border-bottom:1px solid #1e293b"><td style="padding:5px 12px;font-weight:600;color:#94a3b8">Elapsed / Throughput</td><td style="padding:5px 12px;color:#38bdf8">${elapsedMs}ms ($ratePerSec objs/s)</td></tr>
+    <tr style="border-bottom:1px solid #1e293b"><td style="padding:5px 12px;font-weight:600;color:#94a3b8">Top .NET Types</td><td style="padding:5px 12px;font-family:Consolas,monospace">$safeTypesHtml</td></tr>
+    <tr><td style="padding:5px 12px;font-weight:600;color:#94a3b8">Sample Matches</td><td style="padding:5px 12px;color:#cbd5e1">$safeSamplesHtml</td></tr>
+  </tbody>
+</table>
+"@
+                Set-Clipboard -Value $sumHtml -ErrorAction Stop
+                Write-Host "  [CLIPBOARD] Copied FindObject match telemetry summary report (HTML) to clipboard." -ForegroundColor Green
+            } catch {}
+        }
+
         if ($Summary) {
             $hitPct = if ($script:foProcessed -gt 0) { [int][Math]::Round(($script:foEmitted / $script:foProcessed) * 100) } else { 0 }
             $filled = [Math]::Max(0, [Math]::Min(10, [int][Math]::Round($hitPct / 10)))
@@ -1396,12 +1469,14 @@ function Find-ObjectByName {
             $typesTsvBadge = if ($CopyTypeTsv) { ' [TYPES TSV COPIED]' } else { '' }
             $typesJsonBadge = if ($CopyTypeJson) { ' [TYPES JSON COPIED]' } else { '' }
             $typesCsvBadge = if ($CopyTypeCsv) { ' [TYPES CSV COPIED]' } else { '' }
+            $typesHtmlBadge = if ($CopyTypeHtml) { ' [TYPES HTML COPIED]' } else { '' }
             $sumCopyBadge = if ($CopySummary) { ' [SUMMARY COPIED]' } else { '' }
             $sumJsonBadge = if ($CopySummaryJson) { ' [SUMMARY JSON COPIED]' } else { '' }
             $sumTsvBadge = if ($CopySummaryTsv) { ' [SUMMARY TSV COPIED]' } else { '' }
             $sumCsvBadge = if ($CopySummaryCsv) { ' [SUMMARY CSV COPIED]' } else { '' }
+            $sumHtmlBadge = if ($CopySummaryHtml) { ' [SUMMARY HTML COPIED]' } else { '' }
             Write-Host "`n  +----------------------------------------------------------------------+" -ForegroundColor DarkCyan
-            Write-Host "  | FindObject Match Telemetry$invBadge$uniqBadge$mdBadge$csvBadge$tsvBadge$jsonBadge$typesBadge$typesTsvBadge$typesJsonBadge$typesCsvBadge$sumCopyBadge$sumJsonBadge$sumTsvBadge$sumCsvBadge   [$bar] $script:foEmitted / $script:foProcessed matched ($hitPct%)" -ForegroundColor $barColor
+            Write-Host "  | FindObject Match Telemetry$invBadge$uniqBadge$mdBadge$csvBadge$tsvBadge$jsonBadge$typesBadge$typesTsvBadge$typesJsonBadge$typesCsvBadge$typesHtmlBadge$sumCopyBadge$sumJsonBadge$sumTsvBadge$sumCsvBadge$sumHtmlBadge   [$bar] $script:foEmitted / $script:foProcessed matched ($hitPct%)" -ForegroundColor $barColor
             Write-Host "  | Mode: $Mode | Property: $propLabel | Clauses: $clauseCount | ${elapsedMs}ms ($ratePerSec objs/s)" -ForegroundColor Cyan
             if ($null -ne $script:foTypeCounts -and $script:foTypeCounts.Count -gt 0) {
                 $topTypes = @($script:foTypeCounts.GetEnumerator() | Sort-Object Value -Descending | Select-Object -First 4 | ForEach-Object { "$($_.Key) ($($_.Value))" }) -join ', '
