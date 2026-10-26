@@ -909,6 +909,9 @@ function Find-ObjectByName {
 
         [switch]$CopyJson,
 
+        [Alias('CopyTableHtml', 'CopyGridHtml')]
+        [switch]$CopyHtml,
+
         [Alias('CopyTypes')]
         [switch]$CopyTypeSummary,
 
@@ -1018,6 +1021,8 @@ function Find-ObjectByName {
         if ($CopyTsv) { $script:foTsvRows = [System.Collections.Generic.List[string]]::new() }
         $script:foJsonItems = $null
         if ($CopyJson) { $script:foJsonItems = [System.Collections.Generic.List[object]]::new() }
+        $script:foHtmlRows = $null
+        if ($CopyHtml) { $script:foHtmlRows = [System.Collections.Generic.List[string]]::new() }
         $script:foTypeCounts = $null
         if ($Summary -or $CopyTypeSummary -or $CopyTypeTsv -or $CopyTypeJson -or $CopyTypeCsv -or $CopyTypeHtml -or $CopySummary -or $CopySummaryJson -or $CopySummaryTsv -or $CopySummaryCsv -or $CopySummaryHtml) {
             $script:foTypeCounts = [System.Collections.Generic.Dictionary[string, int]]::new([System.StringComparer]::OrdinalIgnoreCase)
@@ -1118,7 +1123,17 @@ function Find-ObjectByName {
                 Type         = $typeCell
             })
         }
-        if (($Summary -or $CopySummary -or $CopySummaryJson -or $CopySummaryTsv -or $CopySummaryCsv) -and $null -ne $script:foSampleValues -and $script:foSampleValues.Count -lt 3) {
+        if ($CopyHtml -and $null -ne $script:foHtmlRows -and $script:foHtmlRows.Count -lt 500) {
+            $valCell = if ($values.Count -gt 0) { [string]$values[0] } else { [string]$InputObject }
+            $safeVal = [System.Security.SecurityElement]::Escape(($valCell -replace '\r?\n', ' ').Trim())
+            $propCell = if ($AsString) { 'ToString()' } else { $Property }
+            $safeProp = [System.Security.SecurityElement]::Escape(([string]$propCell).Trim())
+            $typeCell = if ($null -ne $InputObject) { [System.Security.SecurityElement]::Escape($InputObject.GetType().Name) } else { 'Object' }
+            $rowIdx = $script:foHtmlRows.Count + 1
+            $bgColor = if ($rowIdx % 2 -eq 0) { '#0d1117' } else { '#161b22' }
+            $script:foHtmlRows.Add("<tr style=""background-color: $bgColor;""><td style=""padding: 6px 12px; border: 1px solid #30363d; text-align: center; color: #8b949e; font-family: monospace;"">$rowIdx</td><td style=""padding: 6px 12px; border: 1px solid #30363d; color: #58a6ff; font-weight: 600;"">$safeProp</td><td style=""padding: 6px 12px; border: 1px solid #30363d; color: #c9d1d9;"">$safeVal</td><td style=""padding: 6px 12px; border: 1px solid #30363d; color: #a5d6ff; font-family: monospace;"">$typeCell</td></tr>")
+        }
+        if (($Summary -or $CopySummary -or $CopySummaryJson -or $CopySummaryTsv -or $CopySummaryCsv -or $CopySummaryHtml) -and $null -ne $script:foSampleValues -and $script:foSampleValues.Count -lt 3) {
             $sampleVal = if ($values.Count -gt 0) { [string]$values[0] } else { [string]$InputObject }
             if (-not [string]::IsNullOrWhiteSpace($sampleVal)) { $script:foSampleValues.Add($sampleVal) }
         }
@@ -1197,6 +1212,29 @@ function Find-ObjectByName {
                 $jsonText = $script:foJsonItems | ConvertTo-Json -Depth 4
                 Set-Clipboard -Value $jsonText -ErrorAction Stop
                 Write-Host "  [CLIPBOARD] Copied $($script:foJsonItems.Count) matched object(s) as JSON to clipboard." -ForegroundColor Green
+            } catch {}
+        }
+
+        if ($CopyHtml -and $null -ne $script:foHtmlRows -and $script:foHtmlRows.Count -gt 0) {
+            try {
+                $htmlRowsJoined = $script:foHtmlRows -join "`r`n"
+                $htmlTable = @"
+<table style="border-collapse: collapse; width: 100%; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif; font-size: 13px; line-height: 1.5; color: #c9d1d9; background-color: #0d1117; border: 1px solid #30363d;">
+  <thead>
+    <tr style="background-color: #21262d; color: #f0f6fc; text-align: left;">
+      <th style="padding: 8px 12px; border: 1px solid #30363d; text-align: center; width: 40px;">#</th>
+      <th style="padding: 8px 12px; border: 1px solid #30363d;">Property</th>
+      <th style="padding: 8px 12px; border: 1px solid #30363d;">Matched Value</th>
+      <th style="padding: 8px 12px; border: 1px solid #30363d;">Type</th>
+    </tr>
+  </thead>
+  <tbody>
+$htmlRowsJoined
+  </tbody>
+</table>
+"@
+                Set-Clipboard -Value $htmlTable -ErrorAction Stop
+                Write-Host "  [CLIPBOARD] Copied $($script:foHtmlRows.Count) matched object(s) as HTML table to clipboard." -ForegroundColor Green
             } catch {}
         }
 
@@ -1462,6 +1500,7 @@ $($typeHtmlRows -join "`r`n")
             $invBadge = if ($Invert) { ' [INVERTED]' } else { '' }
             $uniqBadge = if ($Unique) { " [UNIQUE: -$script:foDuplicatesFiltered dupes]" } else { '' }
             $mdBadge = if ($CopyMarkdown) { ' [MD COPIED]' } else { '' }
+            $htmlBadge = if ($CopyHtml) { ' [HTML COPIED]' } else { '' }
             $csvBadge = if ($CopyCsv) { ' [CSV COPIED]' } else { '' }
             $tsvBadge = if ($CopyTsv) { ' [TSV COPIED]' } else { '' }
             $jsonBadge = if ($CopyJson) { ' [JSON COPIED]' } else { '' }
@@ -1476,7 +1515,7 @@ $($typeHtmlRows -join "`r`n")
             $sumCsvBadge = if ($CopySummaryCsv) { ' [SUMMARY CSV COPIED]' } else { '' }
             $sumHtmlBadge = if ($CopySummaryHtml) { ' [SUMMARY HTML COPIED]' } else { '' }
             Write-Host "`n  +----------------------------------------------------------------------+" -ForegroundColor DarkCyan
-            Write-Host "  | FindObject Match Telemetry$invBadge$uniqBadge$mdBadge$csvBadge$tsvBadge$jsonBadge$typesBadge$typesTsvBadge$typesJsonBadge$typesCsvBadge$typesHtmlBadge$sumCopyBadge$sumJsonBadge$sumTsvBadge$sumCsvBadge$sumHtmlBadge   [$bar] $script:foEmitted / $script:foProcessed matched ($hitPct%)" -ForegroundColor $barColor
+            Write-Host "  | FindObject Match Telemetry$invBadge$uniqBadge$mdBadge$htmlBadge$csvBadge$tsvBadge$jsonBadge$typesBadge$typesTsvBadge$typesJsonBadge$typesCsvBadge$typesHtmlBadge$sumCopyBadge$sumJsonBadge$sumTsvBadge$sumCsvBadge$sumHtmlBadge   [$bar] $script:foEmitted / $script:foProcessed matched ($hitPct%)" -ForegroundColor $barColor
             Write-Host "  | Mode: $Mode | Property: $propLabel | Clauses: $clauseCount | ${elapsedMs}ms ($ratePerSec objs/s)" -ForegroundColor Cyan
             if ($null -ne $script:foTypeCounts -and $script:foTypeCounts.Count -gt 0) {
                 $topTypes = @($script:foTypeCounts.GetEnumerator() | Sort-Object Value -Descending | Select-Object -First 4 | ForEach-Object { "$($_.Key) ($($_.Value))" }) -join ', '
