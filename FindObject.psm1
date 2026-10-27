@@ -915,6 +915,9 @@ function Find-ObjectByName {
         [Alias('CopyTableXml', 'CopyGridXml')]
         [switch]$CopyXml,
 
+        [Alias('CopyTableYaml', 'CopyGridYaml', 'CopyYml')]
+        [switch]$CopyYaml,
+
         [Alias('CopyTypes')]
         [switch]$CopyTypeSummary,
 
@@ -1034,6 +1037,8 @@ function Find-ObjectByName {
         if ($CopyHtml) { $script:foHtmlRows = [System.Collections.Generic.List[string]]::new() }
         $script:foXmlRows = $null
         if ($CopyXml) { $script:foXmlRows = [System.Collections.Generic.List[string]]::new() }
+        $script:foYamlRows = $null
+        if ($CopyYaml) { $script:foYamlRows = [System.Collections.Generic.List[string]]::new() }
         $script:foTypeCounts = $null
         if ($Summary -or $CopyTypeSummary -or $CopyTypeTsv -or $CopyTypeJson -or $CopyTypeCsv -or $CopyTypeHtml -or $CopyTypeXml -or $CopySummary -or $CopySummaryJson -or $CopySummaryTsv -or $CopySummaryCsv -or $CopySummaryHtml -or $CopySummaryXml) {
             $script:foTypeCounts = [System.Collections.Generic.Dictionary[string, int]]::new([System.StringComparer]::OrdinalIgnoreCase)
@@ -1153,6 +1158,19 @@ function Find-ObjectByName {
             $rowIdx = $script:foXmlRows.Count + 1
             $script:foXmlRows.Add("    <Object index=""$rowIdx"" property=""$safeProp"" type=""$typeCell"">$safeVal</Object>")
         }
+        if ($CopyYaml -and $null -ne $script:foYamlRows -and $script:foYamlRows.Count -lt 500) {
+            $valCell = if ($values.Count -gt 0) { [string]$values[0] } else { [string]$InputObject }
+            $cleanVal = ($valCell -replace '\r?\n', ' ').Trim()
+            $quotedVal = if ($cleanVal -match '[:#\[\]\{\},&*?|<>=!%@`"\\]' -or $cleanVal -match '^[\s\-]') {
+                '"' + ($cleanVal -replace '\\', '\\' -replace '"', '\"') + '"'
+            } else {
+                $cleanVal
+            }
+            $propCell = if ($AsString) { 'ToString()' } else { $Property }
+            $typeCell = if ($null -ne $InputObject) { $InputObject.GetType().Name } else { 'Object' }
+            $rowIdx = $script:foYamlRows.Count + 1
+            $script:foYamlRows.Add("  - index: $rowIdx`r`n    property: $([string]$propCell)`r`n    type: $typeCell`r`n    value: $quotedVal")
+        }
         if (($Summary -or $CopySummary -or $CopySummaryJson -or $CopySummaryTsv -or $CopySummaryCsv -or $CopySummaryHtml -or $CopySummaryXml) -and $null -ne $script:foSampleValues -and $script:foSampleValues.Count -lt 3) {
             $sampleVal = if ($values.Count -gt 0) { [string]$values[0] } else { [string]$InputObject }
             if (-not [string]::IsNullOrWhiteSpace($sampleVal)) { $script:foSampleValues.Add($sampleVal) }
@@ -1269,6 +1287,23 @@ $xmlRowsJoined
 "@
                 Set-Clipboard -Value $xmlDoc -ErrorAction Stop
                 Write-Host "  [CLIPBOARD] Copied $($script:foXmlRows.Count) matched object(s) as XML to clipboard." -ForegroundColor Green
+            } catch {}
+        }
+
+        if ($CopyYaml -and $null -ne $script:foYamlRows -and $script:foYamlRows.Count -gt 0) {
+            try {
+                $yamlRowsJoined = $script:foYamlRows -join "`r`n"
+                $yamlDoc = @"
+# FindObject Results
+count: $($script:foYamlRows.Count)
+mode: $Mode
+property: $propLabel
+timestamp: '$([DateTime]::UtcNow.ToString('o'))'
+results:
+$yamlRowsJoined
+"@
+                Set-Clipboard -Value $yamlDoc -ErrorAction Stop
+                Write-Host "  [CLIPBOARD] Copied $($script:foYamlRows.Count) matched object(s) as YAML to clipboard." -ForegroundColor Green
             } catch {}
         }
 
@@ -1600,6 +1635,7 @@ $typeXmlRowsJoined
             $mdBadge = if ($CopyMarkdown) { ' [MD COPIED]' } else { '' }
             $htmlBadge = if ($CopyHtml) { ' [HTML COPIED]' } else { '' }
             $xmlBadge = if ($CopyXml) { ' [XML COPIED]' } else { '' }
+            $yamlBadge = if ($CopyYaml) { ' [YAML COPIED]' } else { '' }
             $csvBadge = if ($CopyCsv) { ' [CSV COPIED]' } else { '' }
             $tsvBadge = if ($CopyTsv) { ' [TSV COPIED]' } else { '' }
             $jsonBadge = if ($CopyJson) { ' [JSON COPIED]' } else { '' }
@@ -1616,7 +1652,7 @@ $typeXmlRowsJoined
             $sumHtmlBadge = if ($CopySummaryHtml) { ' [SUMMARY HTML COPIED]' } else { '' }
             $sumXmlBadge = if ($CopySummaryXml) { ' [SUMMARY XML COPIED]' } else { '' }
             Write-Host "`n  +----------------------------------------------------------------------+" -ForegroundColor DarkCyan
-            Write-Host "  | FindObject Match Telemetry$invBadge$uniqBadge$mdBadge$htmlBadge$xmlBadge$csvBadge$tsvBadge$jsonBadge$typesBadge$typesTsvBadge$typesJsonBadge$typesCsvBadge$typesHtmlBadge$typesXmlBadge$sumCopyBadge$sumJsonBadge$sumTsvBadge$sumCsvBadge$sumHtmlBadge$sumXmlBadge   [$bar] $script:foEmitted / $script:foProcessed matched ($hitPct%)" -ForegroundColor $barColor
+            Write-Host "  | FindObject Match Telemetry$invBadge$uniqBadge$mdBadge$htmlBadge$xmlBadge$yamlBadge$csvBadge$tsvBadge$jsonBadge$typesBadge$typesTsvBadge$typesJsonBadge$typesCsvBadge$typesHtmlBadge$typesXmlBadge$sumCopyBadge$sumJsonBadge$sumTsvBadge$sumCsvBadge$sumHtmlBadge$sumXmlBadge   [$bar] $script:foEmitted / $script:foProcessed matched ($hitPct%)" -ForegroundColor $barColor
             Write-Host "  | Mode: $Mode | Property: $propLabel | Clauses: $clauseCount | ${elapsedMs}ms ($ratePerSec objs/s)" -ForegroundColor Cyan
             if ($null -ne $script:foTypeCounts -and $script:foTypeCounts.Count -gt 0) {
                 $topTypes = @($script:foTypeCounts.GetEnumerator() | Sort-Object Value -Descending | Select-Object -First 4 | ForEach-Object { "$($_.Key) ($($_.Value))" }) -join ', '
