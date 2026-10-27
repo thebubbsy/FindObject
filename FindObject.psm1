@@ -930,6 +930,9 @@ function Find-ObjectByName {
         [Alias('CopyTypesHtml')]
         [switch]$CopyTypeHtml,
 
+        [Alias('CopyTypesXml')]
+        [switch]$CopyTypeXml,
+
         [Alias('CopyReport', 'CopyStats')]
         [switch]$CopySummary,
 
@@ -944,6 +947,9 @@ function Find-ObjectByName {
 
         [Alias('CopyReportHtml', 'CopyStatsHtml')]
         [switch]$CopySummaryHtml,
+
+        [Alias('CopyReportXml', 'CopyStatsXml')]
+        [switch]$CopySummaryXml,
 
         [Alias('NotMatch', 'v')]
         [switch]$Invert,
@@ -1029,11 +1035,11 @@ function Find-ObjectByName {
         $script:foXmlRows = $null
         if ($CopyXml) { $script:foXmlRows = [System.Collections.Generic.List[string]]::new() }
         $script:foTypeCounts = $null
-        if ($Summary -or $CopyTypeSummary -or $CopyTypeTsv -or $CopyTypeJson -or $CopyTypeCsv -or $CopyTypeHtml -or $CopySummary -or $CopySummaryJson -or $CopySummaryTsv -or $CopySummaryCsv -or $CopySummaryHtml) {
+        if ($Summary -or $CopyTypeSummary -or $CopyTypeTsv -or $CopyTypeJson -or $CopyTypeCsv -or $CopyTypeHtml -or $CopyTypeXml -or $CopySummary -or $CopySummaryJson -or $CopySummaryTsv -or $CopySummaryCsv -or $CopySummaryHtml -or $CopySummaryXml) {
             $script:foTypeCounts = [System.Collections.Generic.Dictionary[string, int]]::new([System.StringComparer]::OrdinalIgnoreCase)
         }
         $script:foSampleValues = $null
-        if ($Summary -or $CopySummary -or $CopySummaryJson -or $CopySummaryTsv -or $CopySummaryCsv -or $CopySummaryHtml) { $script:foSampleValues = [System.Collections.Generic.List[string]]::new() }
+        if ($Summary -or $CopySummary -or $CopySummaryJson -or $CopySummaryTsv -or $CopySummaryCsv -or $CopySummaryHtml -or $CopySummaryXml) { $script:foSampleValues = [System.Collections.Generic.List[string]]::new() }
 
         Write-Verbose "FindObject: Mode=$Mode Property=$Property CaseSensitive=$CaseSensitive Clauses=$clauseCount Invert=$Invert Unique=$Unique"
     }
@@ -1147,7 +1153,7 @@ function Find-ObjectByName {
             $rowIdx = $script:foXmlRows.Count + 1
             $script:foXmlRows.Add("    <Object index=""$rowIdx"" property=""$safeProp"" type=""$typeCell"">$safeVal</Object>")
         }
-        if (($Summary -or $CopySummary -or $CopySummaryJson -or $CopySummaryTsv -or $CopySummaryCsv -or $CopySummaryHtml) -and $null -ne $script:foSampleValues -and $script:foSampleValues.Count -lt 3) {
+        if (($Summary -or $CopySummary -or $CopySummaryJson -or $CopySummaryTsv -or $CopySummaryCsv -or $CopySummaryHtml -or $CopySummaryXml) -and $null -ne $script:foSampleValues -and $script:foSampleValues.Count -lt 3) {
             $sampleVal = if ($values.Count -gt 0) { [string]$values[0] } else { [string]$InputObject }
             if (-not [string]::IsNullOrWhiteSpace($sampleVal)) { $script:foSampleValues.Add($sampleVal) }
         }
@@ -1370,6 +1376,28 @@ $($typeHtmlRows -join "`r`n")
             } catch {}
         }
 
+        if ($CopyTypeXml -and $null -ne $script:foTypeCounts -and $script:foTypeCounts.Count -gt 0) {
+            try {
+                $typeXmlRows = @()
+                $tIdx = 0
+                foreach ($kv in ($script:foTypeCounts.GetEnumerator() | Sort-Object Value -Descending)) {
+                    $tIdx++
+                    $sharePct = if ($script:foEmitted -gt 0) { [Math]::Round(($kv.Value * 100.0) / $script:foEmitted, 1) } else { 0 }
+                    $safeType = [System.Security.SecurityElement]::Escape([string]$kv.Key)
+                    $typeXmlRows += "    <Type index=`"$tIdx`" name=`"$safeType`" count=`"$($kv.Value)`" sharePercent=`"${sharePct}%`" />"
+                }
+                $typeXmlRowsJoined = $typeXmlRows -join "`r`n"
+                $typeXmlDoc = @"
+<?xml version="1.0" encoding="utf-8"?>
+<FindObjectTypeBreakdown matched="$script:foEmitted" scanned="$script:foProcessed" typeCount="$($script:foTypeCounts.Count)" timestamp="$([DateTime]::UtcNow.ToString('o'))">
+$typeXmlRowsJoined
+</FindObjectTypeBreakdown>
+"@
+                Set-Clipboard -Value $typeXmlDoc -ErrorAction Stop
+                Write-Host "  [CLIPBOARD] Copied $($script:foTypeCounts.Count) .NET type breakdown row(s) as XML to clipboard." -ForegroundColor Green
+            } catch {}
+        }
+
         if ($CopySummary) {
             try {
                 $hitPctReport = if ($script:foProcessed -gt 0) { [int][Math]::Round(($script:foEmitted / $script:foProcessed) * 100) } else { 0 }
@@ -1519,6 +1547,48 @@ $($typeHtmlRows -join "`r`n")
             } catch {}
         }
 
+        if ($CopySummaryXml) {
+            try {
+                $hitPctXml = if ($script:foProcessed -gt 0) { [Math]::Round(($script:foEmitted * 100.0) / $script:foProcessed, 1) } else { 0 }
+                $propLabelXml = if ($AsString) { 'ToString()' } else { $Property }
+                $safePropXml = [System.Security.SecurityElement]::Escape([string]$propLabelXml)
+                $safeModeXml = [System.Security.SecurityElement]::Escape([string]$Mode)
+                $typeXmlNodes = @()
+                if ($null -ne $script:foTypeCounts) {
+                    $tIdx = 0
+                    foreach ($kv in ($script:foTypeCounts.GetEnumerator() | Sort-Object Value -Descending | Select-Object -First 6)) {
+                        $tIdx++
+                        $safeT = [System.Security.SecurityElement]::Escape([string]$kv.Key)
+                        $typeXmlNodes += "    <TopType index=`"$tIdx`" name=`"$safeT`" count=`"$($kv.Value)`" />"
+                    }
+                }
+                $typeXmlBlock = if ($typeXmlNodes.Count -gt 0) {
+                    "`r`n  <TopTypes>`r`n" + ($typeXmlNodes -join "`r`n") + "`r`n  </TopTypes>"
+                } else { '' }
+
+                $sampleXmlNodes = @()
+                if ($null -ne $script:foSampleValues) {
+                    $sIdx = 0
+                    foreach ($sv in $script:foSampleValues) {
+                        $sIdx++
+                        $safeS = [System.Security.SecurityElement]::Escape(([string]$sv -replace '\r?\n', ' ').Trim())
+                        $sampleXmlNodes += "    <Sample index=`"$sIdx`">$safeS</Sample>"
+                    }
+                }
+                $sampleXmlBlock = if ($sampleXmlNodes.Count -gt 0) {
+                    "`r`n  <SampleMatches>`r`n" + ($sampleXmlNodes -join "`r`n") + "`r`n  </SampleMatches>"
+                } else { '' }
+
+                $sumXml = @"
+<?xml version="1.0" encoding="utf-8"?>
+<FindObjectSummary matched="$script:foEmitted" scanned="$script:foProcessed" hitRatePercent="$hitPctXml%" mode="$safeModeXml" property="$safePropXml" clauses="$clauseCount" caseSensitive="$([bool]$CaseSensitive)" invert="$([bool]$Invert)" unique="$([bool]$Unique)" duplicatesFiltered="$script:foDuplicatesFiltered" elapsedMs="$elapsedMs" throughputPerSec="$ratePerSec" timestamp="$([DateTime]::UtcNow.ToString('o'))">$typeXmlBlock$sampleXmlBlock
+</FindObjectSummary>
+"@
+                Set-Clipboard -Value $sumXml -ErrorAction Stop
+                Write-Host "  [CLIPBOARD] Copied FindObject match telemetry summary report (XML) to clipboard." -ForegroundColor Green
+            } catch {}
+        }
+
         if ($Summary) {
             $hitPct = if ($script:foProcessed -gt 0) { [int][Math]::Round(($script:foEmitted / $script:foProcessed) * 100) } else { 0 }
             $filled = [Math]::Max(0, [Math]::Min(10, [int][Math]::Round($hitPct / 10)))
@@ -1538,13 +1608,15 @@ $($typeHtmlRows -join "`r`n")
             $typesJsonBadge = if ($CopyTypeJson) { ' [TYPES JSON COPIED]' } else { '' }
             $typesCsvBadge = if ($CopyTypeCsv) { ' [TYPES CSV COPIED]' } else { '' }
             $typesHtmlBadge = if ($CopyTypeHtml) { ' [TYPES HTML COPIED]' } else { '' }
+            $typesXmlBadge = if ($CopyTypeXml) { ' [TYPES XML COPIED]' } else { '' }
             $sumCopyBadge = if ($CopySummary) { ' [SUMMARY COPIED]' } else { '' }
             $sumJsonBadge = if ($CopySummaryJson) { ' [SUMMARY JSON COPIED]' } else { '' }
             $sumTsvBadge = if ($CopySummaryTsv) { ' [SUMMARY TSV COPIED]' } else { '' }
             $sumCsvBadge = if ($CopySummaryCsv) { ' [SUMMARY CSV COPIED]' } else { '' }
             $sumHtmlBadge = if ($CopySummaryHtml) { ' [SUMMARY HTML COPIED]' } else { '' }
+            $sumXmlBadge = if ($CopySummaryXml) { ' [SUMMARY XML COPIED]' } else { '' }
             Write-Host "`n  +----------------------------------------------------------------------+" -ForegroundColor DarkCyan
-            Write-Host "  | FindObject Match Telemetry$invBadge$uniqBadge$mdBadge$htmlBadge$xmlBadge$csvBadge$tsvBadge$jsonBadge$typesBadge$typesTsvBadge$typesJsonBadge$typesCsvBadge$typesHtmlBadge$sumCopyBadge$sumJsonBadge$sumTsvBadge$sumCsvBadge$sumHtmlBadge   [$bar] $script:foEmitted / $script:foProcessed matched ($hitPct%)" -ForegroundColor $barColor
+            Write-Host "  | FindObject Match Telemetry$invBadge$uniqBadge$mdBadge$htmlBadge$xmlBadge$csvBadge$tsvBadge$jsonBadge$typesBadge$typesTsvBadge$typesJsonBadge$typesCsvBadge$typesHtmlBadge$typesXmlBadge$sumCopyBadge$sumJsonBadge$sumTsvBadge$sumCsvBadge$sumHtmlBadge$sumXmlBadge   [$bar] $script:foEmitted / $script:foProcessed matched ($hitPct%)" -ForegroundColor $barColor
             Write-Host "  | Mode: $Mode | Property: $propLabel | Clauses: $clauseCount | ${elapsedMs}ms ($ratePerSec objs/s)" -ForegroundColor Cyan
             if ($null -ne $script:foTypeCounts -and $script:foTypeCounts.Count -gt 0) {
                 $topTypes = @($script:foTypeCounts.GetEnumerator() | Sort-Object Value -Descending | Select-Object -First 4 | ForEach-Object { "$($_.Key) ($($_.Value))" }) -join ', '
